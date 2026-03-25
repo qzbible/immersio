@@ -4,6 +4,7 @@ Main entry point that imports route modules.
 """
 from fastapi import FastAPI, Request, Response, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
@@ -40,6 +41,11 @@ sio = socketio.AsyncServer(
 app = FastAPI()
 socket_app = socketio.ASGIApp(sio, app, socketio_path='api/socket.io')
 
+# Serve static audio files at /static/audio/
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(os.path.join(STATIC_DIR, "audio"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 api_router = __import__('fastapi', fromlist=['APIRouter']).APIRouter(prefix="/api")
 
 # ── Include modular route files ──────────────────────────────────────
@@ -58,7 +64,8 @@ async def get_badges(request: Request, authorization: Optional[str] = Header(Non
     return badges
 
 @api_router.get("/leaderboard")
-async def get_leaderboard():
+async def get_leaderboard(request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(request, authorization)
     users = await db.users.find({}, {"_id": 0, "user_id": 1, "name": 1, "picture": 1, "level": 1, "xp": 1}).sort("xp", -1).to_list(50)
     return users
 
@@ -72,15 +79,15 @@ async def daily_manna_status(request: Request, authorization: Optional[str] = He
     return {"can_play": manna is None, "streak": len(streak_doc)}
 
 @api_router.post("/daily-manna/complete")
-async def complete_daily_manna(request: Request, authorization: Optional[str] = Header(None)):
+async def complete_daily_manna(request: Request, coins: Optional[int] = 10, xp: Optional[int] = 20, authorization: Optional[str] = Header(None)):
     user = await get_current_user(request, authorization)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     existing = await db.daily_manna.find_one({"user_id": user.user_id, "date": today})
     if existing:
         raise HTTPException(status_code=400, detail="Already completed today")
     await db.daily_manna.insert_one({"user_id": user.user_id, "date": today, "completed_at": datetime.now(timezone.utc).isoformat()})
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"xp": 20, "coins": 10}})
-    return {"message": "Manna collected", "xp_earned": 20, "coins_earned": 10}
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"xp": xp, "coins": coins}})
+    return {"message": "Manna collected", "xp_earned": xp, "coins_earned": coins}
 
 # ── Polyglot Badge Tracking ──────────────────────────────────────────
 @api_router.get("/lang-progress")
@@ -214,7 +221,8 @@ async def get_duo_stats(request: Request, authorization: Optional[str] = Header(
     return {"total_matches": total, "wins": wins, "losses": total - wins, "mmr": mmr, "win_rate": round(wins / total * 100, 1) if total > 0 else 0}
 
 @api_router.get("/duo/leaderboard")
-async def get_duo_leaderboard():
+async def get_duo_leaderboard(request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(request, authorization)
     leaderboard = await db.duo_leaderboard.find({}, {"_id": 0}).sort("mmr", -1).to_list(50)
     return leaderboard
 
@@ -358,12 +366,14 @@ async def register_tournament(tournament_id: str, request: Request, authorizatio
     return {"message": "Inscription réussie", "participants_count": len(tournament["participants"]) + 1}
 
 @api_router.get("/tournaments/active")
-async def get_active_tournaments():
+async def get_active_tournaments(request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(request, authorization)
     tournaments = await db.tournaments.find({"status": {"$in": ["registration", "ongoing"]}}, {"_id": 0}).sort("start_date", 1).to_list(20)
     return tournaments
 
 @api_router.get("/tournaments/{tournament_id}")
-async def get_tournament_detail(tournament_id: str):
+async def get_tournament_detail(tournament_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(request, authorization)
     tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournoi non trouvé")
@@ -508,14 +518,14 @@ async def join_duo_room(sid, data):
     user_id = data.get("user_id")
     role = data.get("role", "player")
     
-    sio.enter_room(sid, match_id)
+    await sio.enter_room(sid, match_id)
     duo_rooms.setdefault(match_id, {})[sid] = {"user_id": user_id, "role": role}
     
     await sio.emit("joined_room", {"match_id": match_id, "user_id": user_id, "role": role}, room=sid)
     
     players = [v for v in duo_rooms.get(match_id, {}).values() if v["role"] != "spectator"]
     if len(players) >= 2:
-        await sio.emit("both_ready", {"match_id": match_id}, room=match_id)
+        await sio.emit("both_players_ready", {"match_id": match_id}, room=match_id)
 
 @sio.event
 async def player_ready(sid, data):
@@ -532,7 +542,7 @@ async def player_ready(sid, data):
     
     if match.get("questions"):
         q = match["questions"][0]
-        await sio.emit("new_question", {"question_index": 0, "text": q["text"], "options": q["options"], "total_questions": len(match["questions"])}, room=match_id)
+        await sio.emit("new_question", {"question_index": 0, "text": q["text"], "options": q["options"], "total_questions": len(match["questions"]), "timer": 15}, room=match_id)
 
 @sio.event
 async def submit_answer(sid, data):
@@ -610,7 +620,7 @@ async def submit_answer(sid, data):
             import asyncio
             await asyncio.sleep(2)
             q = questions[next_q]
-            await sio.emit("new_question", {"question_index": next_q, "text": q["text"], "options": q["options"], "total_questions": len(questions)}, room=match_id)
+            await sio.emit("new_question", {"question_index": next_q, "text": q["text"], "options": q["options"], "total_questions": len(questions), "timer": 15}, room=match_id)
 
 @sio.event
 async def send_emoji(sid, data):
@@ -716,8 +726,8 @@ async def seed_initial_data():
             {"mode_id": "labyrinthe_exode", "category": "Logique", "name": "Labyrinthe de l'Exode", "description": "Guidez le peuple vers la Terre Promise", "icon": "🗺️", "difficulty": "moyen", "duration_minutes": 5, "color": "from-amber-400 to-amber-600", "available": True},
             {"mode_id": "brebis_perdue", "category": "Défis Flash", "name": "Trouver la Brebis", "description": "Retrouvez la brebis égarée", "icon": "🐑", "difficulty": "facile", "duration_minutes": 1, "color": "from-lime-400 to-lime-600", "available": True},
             {"mode_id": "multiplier_pains", "category": "Défis Flash", "name": "Multiplier les Pains", "description": "Cliquez vite pour nourrir la foule", "icon": "🍞", "difficulty": "facile", "duration_minutes": 1, "color": "from-rose-400 to-rose-600", "available": True},
-            {"mode_id": "blind_test", "category": "Événements", "name": "Blind Test des Cantiques", "description": "Reconnaissez les hymnes", "icon": "🎵", "difficulty": "moyen", "duration_minutes": 10, "color": "from-cyan-400 to-cyan-600", "available": False},
-            {"mode_id": "voyage_paul", "category": "Aventure", "name": "Le Voyage de Paul", "description": "Suivez les missions de l'apôtre Paul", "icon": "⛵", "difficulty": "difficile", "duration_minutes": 15, "color": "from-violet-400 to-violet-600", "available": False}
+            {"mode_id": "blind_test", "category": "Événements", "name": "Blind Test des Cantiques", "description": "Reconnaissez les hymnes", "icon": "🎵", "difficulty": "moyen", "duration_minutes": 10, "color": "from-cyan-400 to-cyan-600", "available": True},
+            {"mode_id": "voyage_paul", "category": "Aventure", "name": "Le Voyage de Paul", "description": "Suivez les missions de l'apôtre Paul", "icon": "⛵", "difficulty": "difficile", "duration_minutes": 15, "color": "from-violet-400 to-violet-600", "available": True}
         ]
         await db.game_modes.insert_many(game_modes)
         logger.info(f"Seeded {len(game_modes)} game modes")

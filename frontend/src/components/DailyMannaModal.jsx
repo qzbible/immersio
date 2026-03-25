@@ -25,7 +25,7 @@ const DailyMannaModal = ({ onClose, onComplete }) => {
     
     try {
       const response = await axios.post(
-        `${BACKEND_URL}/api/daily-manna?coins=${coins}`,
+        `${BACKEND_URL}/api/daily-manna/complete?coins=${coins}`,
         {},
         { withCredentials: true }
       );

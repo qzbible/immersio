@@ -4,9 +4,19 @@ import { motion } from 'framer-motion';
 import Confetti from 'react-confetti';
 import axios from 'axios';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAudio } from '@/hooks/useAudio';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Trophy } from 'lucide-react';
+import { ArrowLeft, Trophy, ShieldAlert, Target, Star, Zap, Flame, Crown } from 'lucide-react';
+
+const DIFFICULTIES = [
+  { value: "très faible", label: "Très faible", icon: <ShieldAlert className="w-6 h-6" />, color: "border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20" },
+  { value: "faible", label: "Faible", icon: <Target className="w-6 h-6" />, color: "border-blue-500/30 text-blue-300 hover:bg-blue-500/20" },
+  { value: "moyen", label: "Moyen", icon: <Star className="w-6 h-6" />, color: "border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/20" },
+  { value: "un peu audessus de la moyen", label: "Supérieur", icon: <Zap className="w-6 h-6" />, color: "border-orange-500/30 text-orange-300 hover:bg-orange-500/20" },
+  { value: "fort", label: "Fort", icon: <Flame className="w-6 h-6" />, color: "border-red-500/30 text-red-300 hover:bg-red-500/20" },
+  { value: "tres fort", label: "Très fort", icon: <Crown className="w-6 h-6" />, color: "border-purple-500/30 text-purple-300 hover:bg-purple-500/20" },
+];
 
 import QuiADitQuoi from '@/components/games/QuiADitQuoi';
 import VraiFaux from '@/components/games/VraiFaux';
@@ -27,21 +37,38 @@ const GamePlay = () => {
   const { modeId } = useParams();
   const { t, lang } = useTranslation();
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(null);
   const [gameSession, setGameSession] = useState(null);
   const [gameMode, setGameMode] = useState(null);
   const [result, setResult] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // Audio from game mode config (populated once gameMode is fetched)
+  const { playSuccess, playFail, stopMusic } = useAudio({
+    bg_music:    gameMode?.bg_music,
+    sfx_success: gameMode?.sfx_success,
+    sfx_fail:    gameMode?.sfx_fail,
+    sfx_click:   gameMode?.sfx_click,
+    volume:      gameMode?.volume ?? 0.3,
+  });
+
   useEffect(() => {
-    startGame();
+    // Only fetch if a difficulty is selected, or we can fetch mode info prior.
+    // For now, startGame will fetch everything.
   }, [modeId]);
 
-  const startGame = async () => {
+  const handleDifficultySelect = (diff) => {
+    setSelectedDifficulty(diff.value);
+    startGame(diff.value);
+  };
+
+  const startGame = async (difficultyValue) => {
+    setLoading(true);
     try {
       const response = await axios.post(
         `${BACKEND_URL}/api/games/start`,
-        { mode_id: modeId, lang },
+        { mode_id: modeId, lang, difficulty: difficultyValue },
         { withCredentials: true }
       );
       
@@ -66,11 +93,16 @@ const GamePlay = () => {
         { withCredentials: true }
       );
       
-      setResult(response.data);
+      const data = response.data;
+      setResult(data);
+      stopMusic();
       
-      if (response.data.score >= 3) {
+      if (data.score >= 3) {
         setShowConfetti(true);
+        playSuccess();
         setTimeout(() => setShowConfetti(false), 5000);
+      } else {
+        playFail();
       }
     } catch (error) {
       console.error('Erreur soumission:', error);
@@ -111,10 +143,48 @@ const GamePlay = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-white text-lg">{t('games.loading_game')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedDifficulty && !loading) {
+    return (
+      <div className="min-h-screen relative overflow-hidden flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400 rounded-full blur-3xl"></div>
+        </div>
+        <div className="relative z-10 w-full max-w-4xl px-4 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4" style={{ fontFamily: 'Fraunces, serif' }}>
+            Niveau de Difficulté
+          </h1>
+          <p className="text-blue-200 text-lg mb-12">Choisissez la difficulté pour cette session</p>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-12">
+            {DIFFICULTIES.map(d => (
+              <button
+                key={d.value}
+                onClick={() => handleDifficultySelect(d)}
+                className={`flex flex-col items-center justify-center p-6 rounded-3xl border-2 backdrop-blur-md transition-all hover:scale-105 active:scale-95 bg-white/5 ${d.color}`}
+              >
+                <div className="mb-3">{d.icon}</div>
+                <span className="font-bold">{d.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <Button
+            onClick={() => navigate('/games')}
+            variant="outline"
+            className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" /> Retour aux modes
+          </Button>
         </div>
       </div>
     );
@@ -173,7 +243,7 @@ const GamePlay = () => {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
+    <div className="min-h-screen py-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-400 rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400 rounded-full blur-3xl"></div>
@@ -181,7 +251,7 @@ const GamePlay = () => {
 
       <div className="relative z-10 container mx-auto px-4 py-8">
         <Button
-          onClick={() => navigate('/games')}
+          onClick={() => { stopMusic(); navigate('/games'); }}
           variant="outline"
           className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20 mb-6"
         >
@@ -194,7 +264,7 @@ const GamePlay = () => {
             <h1 className="text-3xl font-bold text-white mb-2" style={{ fontFamily: 'Fraunces, serif' }}>
               {gameMode.name}
             </h1>
-            <p className="text-blue-200">{gameMode.description}</p>
+            <p className="text-blue-200 text-sm">{gameMode.description}</p>
           </div>
         )}
 

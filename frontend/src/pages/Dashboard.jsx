@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Sparkles, Trophy, Heart, Coins, Crown, BookOpen, Award, Zap, LogOut, Shield } from 'lucide-react';
 import DailyMannaModal from '@/components/DailyMannaModal';
+import ChurchModal from '@/components/ChurchModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -20,6 +21,7 @@ const Dashboard = () => {
   const [badges, setBadges] = useState([]);
   const [dailyMannaStatus, setDailyMannaStatus] = useState({ can_play: false, streak: 0 });
   const [showDailyManna, setShowDailyManna] = useState(false);
+  const [showChurchModal, setShowChurchModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchUserData(); }, []);
@@ -39,6 +41,15 @@ const Dashboard = () => {
       if (error.response?.status === 401) navigate('/');
     } finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    if (user && !user.church && !loading) {
+      const hasSkipped = sessionStorage.getItem('skippedChurchModal');
+      if (!hasSkipped) {
+        setShowChurchModal(true);
+      }
+    }
+  }, [user, loading]);
 
   const handleLogout = async () => {
     try {
@@ -88,7 +99,7 @@ const Dashboard = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20">
             <div className="flex items-center gap-4 mb-4">
-              <img src={user?.picture || 'https://via.placeholder.com/80'} alt={user?.name} className="w-20 h-20 rounded-full border-4 border-yellow-400" />
+              <img src={user?.picture || '/default_avatar.png'} alt={user?.name} className="w-20 h-20 rounded-full border-4 border-yellow-400 object-cover" />
               <div className="flex-1">
                 <h2 data-testid="user-name" className="text-2xl font-bold text-white mb-1" style={{ fontFamily: 'Manrope, sans-serif' }}>{user?.name}</h2>
                 <div className="flex items-center gap-2">
@@ -228,6 +239,13 @@ const Dashboard = () => {
       </div>
 
       {showDailyManna && <DailyMannaModal onClose={() => setShowDailyManna(false)} onComplete={fetchUserData} />}
+      <ChurchModal 
+        isOpen={showChurchModal} 
+        onClose={() => {
+          setShowChurchModal(false);
+          sessionStorage.setItem('skippedChurchModal', 'true');
+        }} 
+      />
     </div>
   );
 };

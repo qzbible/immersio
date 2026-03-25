@@ -139,10 +139,14 @@ const DuoPlay = () => {
     if (selectedAnswer !== null || showResults) return;
     
     setSelectedAnswer(answerIndex);
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('userId');
+    
     socketRef.current.emit('submit_answer', {
       match_id: matchId,
-      role: myRole,
-      answer: answerIndex
+      user_id: userId,
+      answer_index: answerIndex,
+      time_taken: 15 - timeLeft
     });
   };
 

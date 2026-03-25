@@ -8,7 +8,7 @@ class User(BaseModel):
     user_id: str = ""
     email: str = ""
     name: str = ""
-    picture: str = ""
+    picture: str = "/default_avatar.png"
     google_id: str = ""
     level: int = 1
     xp: int = 0
@@ -17,8 +17,10 @@ class User(BaseModel):
     is_premium: bool = False
     premium_expires_at: Optional[Any] = None
     mmr: int = 1000
+    church: str = ""
     created_at: Any = ""
     is_admin: bool = False
+    password: Optional[str] = None
 
 
 class UserSession(BaseModel):
@@ -27,6 +29,16 @@ class UserSession(BaseModel):
     session_token: str = ""
     created_at: Any = ""
     expires_at: Any = ""
+
+
+class OTPRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    email: str
+    name: str = ""
+    church: str = ""
+    code: str
+    created_at: Any
+    expires_at: Any
 
 
 class Question(BaseModel):
@@ -91,6 +103,7 @@ class DailyManna(BaseModel):
 class GameStartRequest(BaseModel):
     mode_id: str
     lang: str = "fr"
+    difficulty: Optional[str] = "moyen"
 
 
 class GameSubmitRequest(BaseModel):
@@ -122,20 +135,6 @@ class JoinGroupRequest(BaseModel):
     player_name: str
 
 
-class AdminQuestion(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    question_id: str = ""
-    category: str
-    lang: str
-    text: str
-    answer: Any
-    options: Optional[List[str]] = None
-    reference: Optional[str] = None
-    approved: bool = False
-    created_at: str = ""
-    source: str = "ai"
-
-
 class GenerateQuestionsRequest(BaseModel):
     category: str
     lang: str = "both"
@@ -144,6 +143,7 @@ class GenerateQuestionsRequest(BaseModel):
 
 
 class SaveQuestionRequest(BaseModel):
+    # This was used for bulk save, keeping for compatibility
     question_id: Optional[str] = None
     category: str
     lang: str
@@ -151,5 +151,35 @@ class SaveQuestionRequest(BaseModel):
     answer: Any
     options: Optional[List[str]] = None
     reference: Optional[str] = None
+    difficulty: str = "moyen"
     approved: bool = True
     source: str = "ai"
+
+
+class AdminQuestion(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    question_id: Optional[str] = None
+    category: str
+    lang: str
+    text: str
+    answer: Any
+    options: Optional[List[str]] = None
+    reference: Optional[str] = None
+    difficulty: str = "moyen"
+    approved: bool = True
+    source: str = "manual"
+    created_at: Optional[str] = None
+
+
+
+class GameMode(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    mode_id: str
+    category: str
+    name: str
+    description: str
+    icon: str
+    difficulty: str = "moyen"
+    duration_minutes: int = 5
+    color: str = "from-blue-400 to-blue-600"
+    available: bool = True

@@ -3,19 +3,29 @@ import uuid
 import json
 import re
 from fastapi import APIRouter, Request, Header, HTTPException
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from database import db
 from auth import get_admin_user, get_current_user
-from models import GenerateQuestionsRequest, SaveQuestionRequest
+from models import GenerateQuestionsRequest, SaveQuestionRequest, GameMode, AdminQuestion
+from audio_bank import AUDIO_BANK
 
-load_dotenv()
-
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from i18n_content import (
+    get_quiz_qui_a_dit, get_quiz_vrai_faux, get_chrono_versets,
+    get_mots_caches, get_anagrammes, get_labyrinthe_questions
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+# ── Audio Bank ─────────────────────────────────────────────────────
+@router.get("/audio-bank")
+async def get_audio_bank(request: Request, authorization: Optional[str] = Header(None)):
+    """Return the available music tracks and sound effects from the bank."""
+    await get_admin_user(request, authorization)
+    return AUDIO_BANK
 
 CATEGORY_LABELS = {
     "vrai_faux": "Vrai ou Faux",
@@ -168,88 +178,73 @@ async def generate_questions(
     authorization: Optional[str] = Header(None),
 ):
     await get_admin_user(request, authorization)
-
-    category = gen_req.category
-    if category not in PROMPTS:
-        raise HTTPException(status_code=400, detail=f"Catégorie inconnue: {category}")
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Clé LLM non configurée")
-
-    langs_to_generate = ["fr", "en"] if gen_req.lang == "both" else [gen_req.lang]
-    all_questions = []
-
-    for lang in langs_to_generate:
-        topic = gen_req.topic or DEFAULT_TOPICS.get(category, {}).get(lang, "la Bible")
-        prompt_template = PROMPTS[category][lang]
-        prompt = prompt_template.format(n=gen_req.num_questions, topic=topic)
-
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"admin_gen_{uuid.uuid4().hex[:8]}",
-            system_message="Tu es un expert en Bible qui génère des questions pédagogiques de haute qualité.",
-        ).with_model("openai", "gpt-4o")
-
-        response = await chat.send_message(UserMessage(text=prompt))
-
-        try:
-            items = _parse_json_response(response)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Erreur parsing réponse GPT-4o ({lang}): {str(e)}. Réponse: {response[:200]}"
-            )
-
-        for item in items:
-            all_questions.append(_normalize_question(item, category, lang))
-
-    return {"questions": all_questions, "total": len(all_questions)}
+    raise HTTPException(status_code=501, detail="L'intégration IA n'est pas installée sur ce serveur.")
 
 
-# ── List saved questions ─────────────────────────────────────────────
+# ── Question Management CRUD ─────────────────────────────────────────
 @router.get("/questions")
 async def list_questions(
     request: Request,
     category: Optional[str] = None,
     lang: Optional[str] = None,
+    difficulty: Optional[str] = None,
     approved: Optional[bool] = None,
+    search: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ):
     await get_admin_user(request, authorization)
-
     query = {}
     if category:
         query["category"] = category
     if lang:
         query["lang"] = lang
+    if difficulty:
+        query["difficulty"] = difficulty
     if approved is not None:
         query["approved"] = approved
+    if search:
+        query["text"] = {"$regex": search, "$options": "i"}
 
-    questions = await db.admin_questions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"questions": questions, "total": len(questions)}
+    
+    questions = await db.questions.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return questions
 
 
-# ── Save / update a question ─────────────────────────────────────────
 @router.post("/questions")
-async def save_question(
-    req: SaveQuestionRequest,
+async def create_single_question(
+    q: AdminQuestion,
     request: Request,
     authorization: Optional[str] = Header(None),
 ):
     await get_admin_user(request, authorization)
-
-    doc = req.dict()
+    doc = q.model_dump()
     if not doc.get("question_id"):
-        doc["question_id"] = f"aq_{uuid.uuid4().hex[:12]}"
+        doc["question_id"] = f"mq_{uuid.uuid4().hex[:12]}"
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.questions.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
 
-    await db.admin_questions.update_one(
-        {"question_id": doc["question_id"]},
-        {"$set": doc},
-        upsert=True,
+
+@router.patch("/questions/{question_id}")
+async def update_question(
+    question_id: str,
+    data: Dict[str, Any],
+    request: Request,
+    authorization: Optional[str] = Header(None),
+):
+    await get_admin_user(request, authorization)
+    # Filter out None/empty question_id if sent
+    data.pop("question_id", None)
+    
+    result = await db.questions.update_one(
+        {"question_id": question_id}, {"$set": data}
     )
-    return {"question_id": doc["question_id"], "message": "Question sauvegardée"}
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Question non trouvée")
+    
+    updated = await db.questions.find_one({"question_id": question_id}, {"_id": 0})
+    return updated
 
 
 # ── Bulk save (from generate) ────────────────────────────────────────
@@ -269,7 +264,7 @@ async def bulk_save_questions(
         if not q.get("question_id"):
             q["question_id"] = f"aq_{uuid.uuid4().hex[:12]}"
         q["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db.admin_questions.update_one(
+        await db.questions.update_one(
             {"question_id": q["question_id"]},
             {"$set": q},
             upsert=True,
@@ -288,7 +283,7 @@ async def approve_question(
     await get_admin_user(request, authorization)
     body = await request.json()
     approved = body.get("approved", True)
-    result = await db.admin_questions.update_one(
+    result = await db.questions.update_one(
         {"question_id": question_id}, {"$set": {"approved": approved}}
     )
     if result.matched_count == 0:
@@ -304,23 +299,187 @@ async def delete_question(
     authorization: Optional[str] = Header(None),
 ):
     await get_admin_user(request, authorization)
-    result = await db.admin_questions.delete_one({"question_id": question_id})
+    result = await db.questions.delete_one({"question_id": question_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Question non trouvée")
     return {"message": "Question supprimée"}
+
+
+# ── Sync hardcoded content ───────────────────────────────────────────
+@router.post("/sync-content")
+async def sync_hardcoded_content(request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    
+    synced_categories = []
+    
+    # 1. Qui a dit ?
+    for lang in ["fr", "en"]:
+        data = get_quiz_qui_a_dit(lang)["quotes"]
+        for q in data:
+            await db.questions.update_one(
+                {"text": q["text"], "lang": lang},
+                {"$setOnInsert": {
+                    "question_id": f"sq_{uuid.uuid4().hex[:12]}",
+                    "category": "quiz_qui_a_dit",
+                    "lang": lang,
+                    "text": q["text"],
+                    "answer": q["author"],
+                    "options": q["options"],
+                    "approved": True,
+                    "source": "hardcoded",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    await db.game_modes.update_one(
+        {"mode_id": "quiz_qui_a_dit"},
+        {"$set": {"available": True}},
+        upsert=True
+    )
+    synced_categories.append("qui_a_dit")
+
+    # 2. Vrai/Faux
+    for lang in ["fr", "en"]:
+        data = get_quiz_vrai_faux(lang)["statements"]
+        for q in data:
+            await db.questions.update_one(
+                {"text": q["text"], "lang": lang},
+                {"$setOnInsert": {
+                    "question_id": f"sq_{uuid.uuid4().hex[:12]}",
+                    "category": "quiz_vrai_faux",
+                    "lang": lang,
+                    "text": q["text"],
+                    "answer": q["answer"],
+                    "options": None,
+                    "approved": True,
+                    "source": "hardcoded",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    await db.game_modes.update_one(
+        {"mode_id": "quiz_vrai_faux"},
+        {"$set": {"available": True}},
+        upsert=True
+    )
+    synced_categories.append("vrai_faux")
+
+    # 3. Chrono-Versets
+    for lang in ["fr", "en"]:
+        data = get_chrono_versets(lang)["verses"]
+        for q in data:
+            await db.questions.update_one(
+                {"text": q["text"], "lang": lang},
+                {"$setOnInsert": {
+                    "question_id": f"sq_{uuid.uuid4().hex[:12]}",
+                    "category": "chrono_versets",
+                    "lang": lang,
+                    "text": q["text"],
+                    "answer": q["missing"],
+                    "reference": q.get("reference", ""),
+                    "options": None,
+                    "approved": True,
+                    "source": "hardcoded",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    await db.game_modes.update_one(
+        {"mode_id": "chrono_versets"},
+        {"$set": {"available": True}},
+        upsert=True
+    )
+    synced_categories.append("chrono_versets")
+
+    # 4. Anagrammes
+    for lang in ["fr", "en"]:
+        data = get_anagrammes(lang)["anagrams"]
+        for q in data:
+            await db.questions.update_one(
+                {"text": q["scrambled"], "lang": lang},
+                {"$setOnInsert": {
+                    "question_id": f"sq_{uuid.uuid4().hex[:12]}",
+                    "category": "anagrammes",
+                    "lang": lang,
+                    "text": q["scrambled"],
+                    "answer": q["answer"],
+                    "options": None,
+                    "approved": True,
+                    "source": "hardcoded",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    await db.game_modes.update_one(
+        {"mode_id": "anagrammes"},
+        {"$set": {"available": True}},
+        upsert=True
+    )
+    synced_categories.append("anagrammes")
+
+    # 5. Labyrinthe (Question Sync)
+    for lang in ["fr", "en"]:
+        data = get_labyrinthe_questions(lang)
+        for q in data:
+            await db.questions.update_one(
+                {"text": q["text"], "lang": lang},
+                {"$setOnInsert": {
+                    "question_id": f"sq_{uuid.uuid4().hex[:12]}",
+                    "category": "labyrinthe_exode",
+                    "lang": lang,
+                    "text": q["text"],
+                    "answer": q["answer"],
+                    "options": q["options"],
+                    "approved": True,
+                    "source": "hardcoded",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    
+    # Final step: Ensure ALL modes in the DB are available
+    official_modes = [
+        "quiz_qui_a_dit", "quiz_vrai_faux", "chrono_versets", "mots_caches", 
+        "anagrammes", "la_manne", "tri_livres", "memory_biblique", 
+        "labyrinthe_exode", "brebis_perdue", "multiplier_pains", "blind_test", "voyage_paul"
+    ]
+    
+    for m_id in official_modes:
+        await db.game_modes.update_one(
+            {"mode_id": m_id},
+            {"$set": {"available": True}},
+            upsert=True
+        )
+        if m_id not in synced_categories:
+            synced_categories.append(m_id)
+
+    # Handle Aliases
+    aliases = {
+        "qui_a_dit": "quiz_qui_a_dit",
+        "vrai_faux": "quiz_vrai_faux",
+        "labyrinthe": "labyrinthe_exode"
+    }
+    for old_id, new_id in aliases.items():
+        await db.game_modes.update_one(
+            {"mode_id": old_id},
+            {"$set": {"available": True}},
+            upsert=False
+        )
+
+    return {"status": "success", "synced_categories": synced_categories}
 
 
 # ── Stats ─────────────────────────────────────────────────────────────
 @router.get("/stats")
 async def admin_stats(request: Request, authorization: Optional[str] = Header(None)):
     await get_admin_user(request, authorization)
-    total = await db.admin_questions.count_documents({})
-    approved = await db.admin_questions.count_documents({"approved": True})
+    total = await db.questions.count_documents({})
+    approved = await db.questions.count_documents({"approved": True})
     by_category = {}
     for cat in PROMPTS.keys():
         by_category[cat] = {
-            "total": await db.admin_questions.count_documents({"category": cat}),
-            "approved": await db.admin_questions.count_documents({"category": cat, "approved": True}),
+            "total": await db.questions.count_documents({"category": cat}),
+            "approved": await db.questions.count_documents({"category": cat, "approved": True}),
         }
     return {"total": total, "approved": approved, "by_category": by_category}
 
@@ -337,3 +496,94 @@ async def promote_user(request: Request, authorization: Optional[str] = Header(N
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
     return {"message": f"{email} est maintenant admin"}
+
+
+# ── User Management ──────────────────────────────────────────────────
+@router.get("/users")
+async def list_users(request: Request, search: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    query = {}
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}}
+        ]
+    users = await db.users.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return users
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    if user_id == "admin": # Protect special admin
+        raise HTTPException(status_code=400, detail="Impossible de supprimer cet administrateur")
+    result = await db.users.delete_one({"user_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return {"message": "Utilisateur supprimé"}
+
+
+# ── Game Mode Management ──────────────────────────────────────────────
+@router.get("/game-modes")
+async def admin_game_modes(request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    modes = await db.game_modes.find({}, {"_id": 0}).to_list(100)
+    return modes
+
+
+@router.get("/game-modes/{mode_id}")
+async def admin_get_game_mode(mode_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    """Fetch a single game mode (includes audio config fields)."""
+    await get_admin_user(request, authorization)
+    mode = await db.game_modes.find_one({"mode_id": mode_id}, {"_id": 0})
+    if not mode:
+        raise HTTPException(status_code=404, detail="Mode non trouvé")
+    return mode
+
+
+@router.post("/game-modes")
+async def create_game_mode(mode: GameMode, request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    existing = await db.game_modes.find_one({"mode_id": mode.mode_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Identifiant de mode déjà utilisé")
+    await db.game_modes.insert_one(mode.model_dump())
+    return mode
+
+
+@router.patch("/game-modes/{mode_id}")
+async def update_game_mode(mode_id: str, data: Dict[str, Any], request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    await db.game_modes.update_one({"mode_id": mode_id}, {"$set": data})
+    updated = await db.game_modes.find_one({"mode_id": mode_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/game-modes/{mode_id}")
+async def delete_game_mode(mode_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    res = await db.game_modes.delete_one({"mode_id": mode_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Mode non trouvé")
+    return {"message": "Mode supprimé"}
+
+
+# ── Overview Stats ──────────────────────────────────────────────────
+@router.get("/overview")
+async def get_overview_stats(request: Request, authorization: Optional[str] = Header(None)):
+    await get_admin_user(request, authorization)
+    total_users = await db.users.count_documents({})
+    total_games = await db.game_sessions.count_documents({"completed": True})
+    total_questions = await db.questions.count_documents({})
+    pending_questions = await db.questions.count_documents({"approved": False})
+    
+    # Recent users
+    recent_users = await db.users.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+    
+    return {
+        "total_users": total_users,
+        "total_games": total_games,
+        "total_questions": total_questions,
+        "pending_questions": pending_questions,
+        "recent_users": recent_users
+    }

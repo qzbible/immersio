@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/sonner';
+import axios from 'axios';
+import { useAuthStore } from '@/stores/authStore';
 import '@/App.css';
 
 import Landing from '@/pages/Landing';
@@ -25,8 +27,54 @@ import Tournaments from '@/pages/Tournaments';
 import { SpectatorList, SpectatorView } from '@/pages/Spectator';
 import Admin from '@/pages/Admin';
 
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuthStore();
+  if (loading) return null;
+  return isAuthenticated ? children : <Navigate to="/" replace />;
+};
+
+const AdminRoute = ({ children }) => {
+  const { user, isAuthenticated, loading } = useAuthStore();
+  if (loading) return null;
+  return (isAuthenticated && user?.is_admin) ? children : <Navigate to="/dashboard" replace />;
+};
+
+const PublicRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuthStore();
+  if (loading) return null;
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+};
+
 function AppRouter() {
   const location = useLocation();
+  const { setUser, setLoading, loading, isAuthenticated } = useAuthStore();
+  
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/auth/me`, { withCredentials: true });
+        setUser(response.data);
+      } catch (error) {
+        console.log('Session non valide ou expirée');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (!isAuthenticated) {
+      checkAuth();
+    } else {
+      setLoading(false);
+    }
+  }, [setUser, setLoading, isAuthenticated]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
+        <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      </div>
+    );
+  }
   
   if (location.hash?.includes('session_id=')) {
     return <AuthCallback />;
@@ -34,27 +82,32 @@ function AppRouter() {
 
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/campaign" element={<Campaign />} />
-      <Route path="/quiz" element={<QuizGame />} />
-      <Route path="/games" element={<GameModes />} />
-      <Route path="/play/:modeId" element={<GamePlay />} />
-      <Route path="/duo" element={<ModeDuo />} />
-      <Route path="/duo/play/:matchId" element={<DuoPlay />} />
-      <Route path="/duo/history" element={<DuoHistory />} />
-      <Route path="/duo/leaderboard" element={<DuoLeaderboard />} />
-      <Route path="/group" element={<ModeGroupe />} />
-      <Route path="/group/host/:sessionId" element={<GroupHost />} />
-      <Route path="/group/play/:sessionId" element={<GroupPlay />} />
-      <Route path="/leaderboard" element={<Leaderboard />} />
-      <Route path="/achievements" element={<Achievements />} />
-      <Route path="/tournaments" element={<Tournaments />} />
-      <Route path="/spectate" element={<SpectatorList />} />
-      <Route path="/spectate/:matchId" element={<SpectatorView />} />
-      <Route path="/premium" element={<Premium />} />
-      <Route path="/premium-success" element={<PremiumSuccess />} />
-      <Route path="/admin" element={<Admin />} />
+      <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
+      
+      {/* Protected Routes */}
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/campaign" element={<ProtectedRoute><Campaign /></ProtectedRoute>} />
+      <Route path="/quiz" element={<ProtectedRoute><QuizGame /></ProtectedRoute>} />
+      <Route path="/games" element={<ProtectedRoute><GameModes /></ProtectedRoute>} />
+      <Route path="/play/:modeId" element={<ProtectedRoute><GamePlay /></ProtectedRoute>} />
+      <Route path="/duo" element={<ProtectedRoute><ModeDuo /></ProtectedRoute>} />
+      <Route path="/duo/play/:matchId" element={<ProtectedRoute><DuoPlay /></ProtectedRoute>} />
+      <Route path="/duo/history" element={<ProtectedRoute><DuoHistory /></ProtectedRoute>} />
+      <Route path="/duo/leaderboard" element={<ProtectedRoute><DuoLeaderboard /></ProtectedRoute>} />
+      <Route path="/group" element={<ProtectedRoute><ModeGroupe /></ProtectedRoute>} />
+      <Route path="/group/host/:sessionId" element={<ProtectedRoute><GroupHost /></ProtectedRoute>} />
+      <Route path="/group/play/:sessionId" element={<ProtectedRoute><GroupPlay /></ProtectedRoute>} />
+      <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+      <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
+      <Route path="/tournaments" element={<ProtectedRoute><Tournaments /></ProtectedRoute>} />
+      <Route path="/spectate" element={<ProtectedRoute><SpectatorList /></ProtectedRoute>} />
+      <Route path="/spectate/:matchId" element={<ProtectedRoute><SpectatorView /></ProtectedRoute>} />
+      <Route path="/premium" element={<ProtectedRoute><Premium /></ProtectedRoute>} />
+      <Route path="/premium-success" element={<ProtectedRoute><PremiumSuccess /></ProtectedRoute>} />
+      
+      {/* Admin Route */}
+      <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+      
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
