@@ -7,23 +7,20 @@
     - environments/{{ env }}/vault
 
   roles:
-    - role: immersio-backend
-      stack_name: "{{ env }}-immersio-backend"
-      dest_folder: "/apps" 
-      hostname: "{{ backend_app_hostname }}"
-      tags: backend
+    - { role: immersio-backend, 
+        stack_name: "{{ env }}-immersio-backend", 
+        dest_folder: "/apps", 
+        hostname: "{{ backend_app_hostname }}", 
+        tags: ["backend"] }
     
-    - role: immersio-frontend
-      stack_name: "{{ env }}-immersio-frontend"
-      dest_folder: "/apps" 
-      hostname: "{{ front_app_hostname }}"
-      tags: frontend
+    - { role: immersio-frontend, 
+        stack_name: "{{ env }}-immersio-frontend", 
+        dest_folder: "/apps", 
+        hostname: "{{ front_app_hostname }}", 
+        tags: ["frontend"] }
 
-    - role: immersio-admin
-      stack_name: "{{ env }}-immersio-admin"
-      dest_folder: "/apps" 
-      hostname: "{{ admin_app_hostname }}"
-      tags: admin
-     
-
-
+    - { role: immersio-admin, 
+        stack_name: "{{ env }}-immersio-admin", 
+        dest_folder: "/apps", 
+        hostname: "{{ admin_app_hostname }}", 
+        tags: ["admin"] }
