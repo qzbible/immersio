@@ -35,14 +35,14 @@
 
 - name: Copy the env files
   ansible.builtin.template:
-    src: "{{ item }}"
-    dest: "{{ final_dest_folder }}/.{{ item }}"
+    src: "{{ item.src }}"
+    dest: "{{ final_dest_folder }}/{{ item.dest }}"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0700"
   loop:
-    - flask.env
-    - mongo.env
+    - { src: "flask.env.j2", dest: ".flask.env" }
+    - { src: "mongo.env.j2", dest: ".mongo.env" }
   register: env_files
 
 # This is a hack to use docker-compose to replace the env vars since swarm cannot do that
