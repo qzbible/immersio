@@ -4,13 +4,12 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-echo "Starting Flask application setup..."
+echo "Starting Immersio API setup..."
 
-# Run database migrations
-echo "Running database migrations..."
-flask db upgrade
+# Run database migrations if needed
+# echo "Running database migrations..."
 
-echo "Flask application starting..."
+echo "Immersio API starting..."
 
-# Start Flask application
-flask run --host=0.0.0.0 --port="${flask_listening_port:-5001}"
+# Start FastAPI application with uvicorn
+exec uvicorn server:app --host 0.0.0.0 --port "${flask_listening_port:-5001}"

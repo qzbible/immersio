@@ -13,8 +13,8 @@ echo "Running database migrations..."
 
 echo "Flask application starting..."
 
-# Start Flask application
-flask run --host=0.0.0.0 --port="${flask_listening_port:-5001}"
+# Start FastAPI application with uvicorn
+exec uvicorn server:app --host 0.0.0.0 --port "${flask_listening_port:-5001}"
 
 exec "$@"
 
