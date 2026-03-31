@@ -43,7 +43,7 @@ services:
         - traefik.http.services.{{ env }}-nginx-immersio_backend.loadbalancer.server.port=80
 
   api:
-    image: "{{ immersio_backend_image }}"  
+    image: "{{ image }}"  
     networks:
       - immersio
     env_file:

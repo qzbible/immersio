@@ -3,7 +3,7 @@ version: "3.8"
 
 services:
   app:
-    image: "{{ immersio_frontend_image }}"
+    image: "{{ image }}"
     networks:
       - immersio
       - "{{ traefik_network }}"
