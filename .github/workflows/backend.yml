@@ -74,4 +74,4 @@ jobs:
         run: |
           # Determine environment based on branch
           ENV_NAME=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          ansible-playbook -e env=$ENV_NAME -e image=${{ needs.build-backend.outputs.image-tag }} deploy.yml
+          ansible-playbook -e env=$ENV_NAME -e image=${{ needs.build-backend.outputs.image-tag }} --tags backend deploy.yml
