@@ -1,26 +1,367 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 import { useTranslation } from '@/hooks/useTranslation';
-import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Eye, Users, Trophy, Zap } from 'lucide-react';
+import { ArrowLeft, Eye, Trophy, Zap, Heart, MessageCircle, Share2, Flame } from 'lucide-react';
 import axios from 'axios';
+import Anagrammes from '@/components/games/Anagrammes';
+import MotsCaches from '@/components/games/MotsCaches';
+import ChronoVersets from '@/components/games/ChronoVersets';
+import QuiADitQuoi from '@/components/games/QuiADitQuoi';
+import VraiFaux from '@/components/games/VraiFaux';
+import LaManne from '@/components/games/LaManne';
+import BrebisPerdue from '@/components/games/BrebisPerdue';
+import LabyrintheExode from '@/components/games/LabyrintheExode';
+import MemoryBiblique from '@/components/games/MemoryBiblique';
+import MultiplierPains from '@/components/games/MultiplierPains';
+import TriLivres from '@/components/games/TriLivres';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
+const SpectatorMatchSlide = ({ match, isActive }) => {
+  const { t } = useTranslation();
+  const socketRef = useRef(null);
+  const [matchData, setMatchData] = useState(match);
+  const [currentQuestion, setCurrentQuestion] = useState(match.current_question || null);
+  const [scores, setScores] = useState({ 
+    player1: match.player1_score || 0, 
+    player2: match.player2_score || 0 
+  });
+  const [gameState, setGameState] = useState('connecting');
+  const [finalResult, setFinalResult] = useState(null);
+  const [likes, setLikes] = useState(Math.floor(Math.random() * 100));
+  const [isLiked, setIsLiked] = useState(false);
+  
+  const [p1Status, setP1Status] = useState('⌛️');
+  const [p2Status, setP2Status] = useState('⌛️');
+  const [correctAnswer, setCorrectAnswer] = useState(null);
+  const [p1Actions, setP1Actions] = useState([]);  
+  const [p2Actions, setP2Actions] = useState([]);  
+  const [currentGameType, setCurrentGameType] = useState(null);
+
+  const GAME_LABELS = {
+    mcq: '📚 Quiz',
+    anagrammes: '🔤 Anagrammes',
+    mots_caches: '🔍 Mots Cachés',
+    qui_a_dit: '💬 Qui a dit ?',
+    vrai_faux: '✅ Vrai/Faux',
+    la_manne: '🍞 La Manne',
+    brebis_perdue: '🐑 Brebis Perdue',
+    multiplier_pains: '🍞 Multiplier Pains',
+    memory_biblique: '🃏 Mémory',
+    labyrinthe_exode: '🗺 Labyrinthe',
+    tri_livres: '📚 Tri Livres',
+  };
+  const [floatingLikes, setFloatingLikes] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  
+  useEffect(() => {
+    // Fake comments removed to favor real-time user chat
+    return () => {};
+  }, [gameState]);
+
+  useEffect(() => {
+    if (!isActive) {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
+    }
+
+    socketRef.current = io(BACKEND_URL, {
+      path: '/api/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnection: true
+    });
+
+    socketRef.current.on('connect', () => {
+      socketRef.current.emit('join_duo_room', { match_id: match.match_id, user_id: 'spectator', role: 'spectator' });
+    });
+
+    socketRef.current.on('joined_room', () => setGameState('watching'));
+
+    socketRef.current.on('new_question', (data) => {
+      setCurrentQuestion(data);
+      setGameState('watching');
+      setP1Status('🧠 Réfléchit...');
+      setP2Status('🧠 Réfléchit...');
+      setCorrectAnswer(null);
+      setCurrentGameType(data.type || 'mcq');
+      setP1Actions([]);
+      setP2Actions([]);
+    });
+
+    socketRef.current.on('answer_received', (data) => {
+      if (data.role === 'player1') setP1Status('⚡ A répondu !');
+      if (data.role === 'player2') setP2Status('⚡ A répondu !');
+    });
+
+    socketRef.current.on('spectator_action', (data) => {
+      if (data.role === 'player1') setP1Status(data.text || 'Action!');
+      else if (data.role === 'player2') setP2Status(data.text || 'Action!');
+    });
+
+    socketRef.current.on('round_results', (data) => {
+      if (data.player1) setScores(prev => ({ ...prev, player1: data.player1.total_score }));
+      if (data.player2) setScores(prev => ({ ...prev, player2: data.player2.total_score }));
+      setCorrectAnswer(data.correct_answer);
+    });
+
+    socketRef.current.on('game_end', (data) => {
+      setFinalResult(data);
+      setGameState('finished');
+    });
+
+    socketRef.current.on('spectator_like', (data) => {
+      setLikes(prev => prev + 1);
+      const newHeart = { id: Date.now() + Math.random(), left: 10 + Math.random() * 20 };
+      setFloatingLikes(prev => [...prev, newHeart]);
+      setTimeout(() => { setFloatingLikes(prev => prev.filter(h => h.id !== newHeart.id)); }, 2000);
+    });
+
+    socketRef.current.on('spectator_comment', (data) => {
+      setComments(prev => [...prev.slice(-4), data]);
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [isActive, match.match_id]);
+
+  const renderGameComponent = (question) => {
+    if (!question) return null;
+    const commonProps = { isMultiplayer: true, onSubmit: () => {} };
+    switch (question.type) {
+      case 'anagrammes': return <Anagrammes {...commonProps} gameData={question.gameData} />;
+      case 'mots_caches': return <MotsCaches {...commonProps} />;
+      case 'chrono_versets': return <ChronoVersets {...commonProps} gameData={question.gameData} />;
+      case 'qui_a_dit': return <QuiADitQuoi {...commonProps} gameData={question.gameData} />;
+      case 'vrai_faux': return <VraiFaux {...commonProps} gameData={question.gameData} />;
+      case 'la_manne': return <LaManne {...commonProps} />;
+      case 'brebis_perdue': return <BrebisPerdue {...commonProps} />;
+      case 'labyrinthe_exode': return <LabyrintheExode {...commonProps} />;
+      case 'memory_biblique': return <MemoryBiblique {...commonProps} gameData={question.gameData} />;
+      case 'multiplier_pains': return <MultiplierPains {...commonProps} />;
+      case 'tri_livres': return <TriLivres {...commonProps} gameData={question.gameData} />;
+      default:
+        return (
+          <div className="flex flex-col gap-4 p-6 bg-black/40 backdrop-blur-md rounded-3xl border border-white/10 w-full max-w-sm mx-auto">
+            <h4 className="text-sm font-bold text-white text-center mb-2">{question.text}</h4>
+            <div className="grid grid-cols-2 gap-2">
+              {question.options?.map((opt, i) => (
+                <div key={i} className={`p-2 rounded-xl border text-center text-[10px] ${correctAnswer === i ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-white/50'}`}>
+                   {opt}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+    }
+  };
+
+  const handleLike = () => {
+    setIsLiked(true);
+    setLikes(prev => prev + 1);
+    const newHeart = { id: Date.now() + Math.random(), left: 10 + Math.random() * 20 };
+    setFloatingLikes(prev => [...prev, newHeart]);
+    setTimeout(() => { setFloatingLikes(prev => prev.filter(h => h.id !== newHeart.id)); }, 2000);
+    
+    // Notify others
+    if (socketRef.current) {
+      socketRef.current.emit('spectator_like', { match_id: match.match_id });
+    }
+  };
+
+  const handleSendComment = (e) => {
+    e.preventDefault();
+    if (!chatMessage.trim()) return;
+    
+    const newComment = { 
+      id: Date.now(), 
+      user: 'Moi', 
+      text: chatMessage.trim(),
+      match_id: match.match_id 
+    };
+    
+    // We don't update local state here because we listen to 'spectator_comment' 
+    // which is broadcasted back to us too (to ensure sync)
+    if (socketRef.current) {
+      socketRef.current.emit('spectator_comment', newComment);
+    }
+    
+    setChatMessage('');
+    setIsChatOpen(false);
+  };
+
+  return (
+    <div className="relative w-full h-screen snap-start snap-always overflow-hidden bg-black flex flex-col">
+      {/* Background Visual */}
+      <div className="absolute inset-0 opacity-40 mix-blend-screen overflow-hidden">
+        <div className={`absolute top-[20%] left-[-10%] w-[80%] h-[80%] rounded-full blur-[100px] ${isActive ? 'bg-indigo-600' : 'bg-indigo-900'} transition-all`}></div>
+        <div className={`absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] rounded-full blur-[100px] ${isActive ? 'bg-purple-600' : 'bg-purple-900'} transition-all`}></div>
+      </div>
+
+      {/* Top HUD */}
+      {(currentQuestion || gameState === 'finished') && (
+        <div className="relative z-50 w-full p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 bg-red-600/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-[9px] font-bold text-white w-fit">
+              <Eye className="w-3 h-3" /> DIRECT
+            </div>
+            {matchData.is_tournament && (
+              <div className="flex items-center gap-1.5 bg-yellow-500/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-[9px] font-bold text-black w-fit">
+                <Trophy className="w-3 h-3" /> {matchData.tournament_name || 'TOURNOI'}
+              </div>
+            )}
+          </div>
+          <div className="bg-white/10 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] font-bold border border-white/20 text-white">
+            {gameState === 'finished' ? 'TERMINE' : currentQuestion ? `QUESTION ${currentQuestion.question_index + 1}` : 'ATTENTE'}
+          </div>
+        </div>
+      )}
+
+      {/* Split Area */}
+      <div className="relative z-10 flex-1 flex flex-col w-full h-full overflow-hidden">
+        <AnimatePresence mode="wait">
+          {gameState === 'finished' && finalResult ? (
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex-1 flex flex-col items-center justify-center text-center">
+              <div className="text-6xl mb-4 animate-bounce">🏆</div>
+              <h2 className="text-2xl font-black text-white">{finalResult.winner === 'draw' ? 'MATCH NUL' : `${finalResult.winner === 'player1' ? matchData.player1_name : matchData.player2_name} GAGNE!`}</h2>
+            </motion.div>
+          ) : currentQuestion ? (
+            <div className="flex-1 flex flex-col w-full h-full">
+              
+              {/* Player 1 - Top */}
+              <div className="flex-1 relative border-b border-white/5 flex flex-col items-center justify-center overflow-hidden">
+                <div className="absolute top-2 left-2 z-40 flex items-center gap-2 bg-black/60 backdrop-blur-md p-1.5 rounded-xl border border-white/10">
+                  <img src={matchData.player1_picture || '/default_avatar.png'} alt="P1" className="w-8 h-8 rounded-full border border-blue-400" />
+                  <div className="flex flex-col">
+                    <span className="text-white font-bold text-[10px]">{matchData.player1_name || 'Joueur 1'}</span>
+                    <span className="text-blue-400 font-bold text-[10px]">{scores.player1} pts</span>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 z-40 bg-black/40 px-2 py-1 rounded-lg">
+                   <p className="text-emerald-400 font-bold text-[8px] uppercase">{p1Status}</p>
+                </div>
+                <div className="w-full scale-[0.6] origin-center pointer-events-none opacity-80">
+                  {renderGameComponent(currentQuestion)}
+                </div>
+              </div>
+
+              {/* Player 2 - Bottom */}
+              <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden">
+                <div className="absolute top-2 left-2 z-40 flex items-center gap-2 bg-black/60 backdrop-blur-md p-1.5 rounded-xl border border-white/10">
+                  <img src={matchData.player2_picture || '/default_avatar.png'} alt="P2" className="w-8 h-8 rounded-full border border-purple-400" />
+                  <div className="flex flex-col">
+                    <span className="text-white font-bold text-[10px]">{matchData.player2_name || 'Joueur 2'}</span>
+                    <span className="text-purple-400 font-bold text-[10px]">{scores.player2} pts</span>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 z-40 bg-black/40 px-2 py-1 rounded-lg">
+                   <p className="text-emerald-400 font-bold text-[8px] uppercase">{p2Status}</p>
+                </div>
+                <div className="w-full scale-[0.6] origin-center pointer-events-none opacity-80">
+                  {renderGameComponent(currentQuestion)}
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse scale-150"></div>
+                <Flame className="w-16 h-16 text-blue-400 relative z-10 animate-bounce" />
+              </div>
+              <h3 className="text-xl font-black text-white mb-2 tracking-tight">EN ATTENTE DU MATCH</h3>
+              <p className="text-white/40 text-xs font-medium uppercase tracking-[0.2em]">Préparez-vous pour l'action...</p>
+              
+              <div className="mt-8 flex items-center gap-2">
+                 {[0, 1, 2].map(i => (
+                   <motion.div
+                     key={i}
+                     animate={{ opacity: [0.2, 1, 0.2] }}
+                     transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                     className="w-1.5 h-1.5 bg-blue-400 rounded-full"
+                   />
+                 ))}
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Interactions */}
+      {gameState === 'watching' && (
+        <div className="absolute right-2 bottom-20 z-50 flex flex-col gap-4 items-center">
+          <button onClick={handleLike} className="flex flex-col items-center gap-1 group relative">
+            <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center">
+              <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500 text-red-500' : 'text-white'}`} />
+            </div>
+            <span className="text-white text-[10px] font-bold">{likes}</span>
+            <AnimatePresence>
+              {floatingLikes.map(h => (
+                <motion.div key={h.id} initial={{ opacity: 1, y: 0 }} animate={{ opacity: 0, y: -80 }} transition={{ duration: 0.8 }} className="absolute -top-4 text-red-500">
+                  <Heart className="w-4 h-4 fill-red-500" />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </button>
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="flex flex-col items-center gap-1">
+            <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-white text-[10px] font-bold">{comments.length * 7}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Comments overlay */}
+      {gameState === 'watching' && (
+        <div className="absolute left-2 bottom-6 z-50 w-40 pointer-events-none flex flex-col gap-1">
+          <AnimatePresence>
+            {comments.map(c => (
+              <motion.div key={c.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="bg-black/40 backdrop-blur-md px-2 py-1 rounded-lg border border-white/5 text-[9px] text-white">
+                <span className="font-bold text-blue-300 mr-1">{c.user}:</span> {c.text}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Chat */}
+      <AnimatePresence>
+        {isChatOpen && (
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="absolute bottom-4 left-0 right-0 px-4 z-[60] flex justify-center">
+            <form onSubmit={handleSendComment} className="w-full max-w-sm flex bg-black/90 backdrop-blur-3xl border border-white/20 rounded-full p-1 shadow-2xl">
+              <input type="text" autoFocus value={chatMessage} onChange={e => setChatMessage(e.target.value)} placeholder="Commenter..." className="flex-1 bg-transparent text-white border-none outline-none px-4 text-xs" />
+              <Button type="submit" size="sm" className="rounded-full bg-blue-600 h-8 px-4 text-[10px]">OK</Button>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const SpectatorList = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     fetchMatches();
-    const interval = setInterval(fetchMatches, 5000);
+    const interval = setInterval(fetchMatches, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -32,192 +373,54 @@ const SpectatorList = () => {
     finally { setLoading(false); }
   };
 
-  return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-400 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400 rounded-full blur-3xl" />
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, clientHeight } = containerRef.current;
+    const index = Math.round(scrollTop / clientHeight);
+    if (index !== activeIndex && index >= 0 && index < matches.length) {
+      setActiveIndex(index);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0f24]">
+        <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
       </div>
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        <Button onClick={() => navigate('/games')} variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20 mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" /> {t('common.back')}
+    );
+  }
+
+  if (matches.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#0a0f24] flex flex-col items-center justify-center p-6 text-white">
+        <Button onClick={() => navigate('/dashboard')} variant="ghost" className="absolute top-6 left-6 text-white bg-white/10 rounded-full w-10 h-10 p-0 flex items-center justify-center">
+          <ArrowLeft className="w-5 h-5" />
         </Button>
+        <Eye className="w-16 h-16 opacity-20 mb-6" />
+        <h1 className="text-xl font-bold">Aucun match en direct</h1>
+        <Button onClick={() => navigate('/dashboard')} className="mt-8 bg-blue-600 rounded-full">Retour</Button>
+      </div>
+    );
+  }
 
-        <div className="text-center mb-10">
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3" style={{ fontFamily: 'Fraunces, serif' }}>{t('spectator.title')}</h1>
-          <p className="text-lg text-blue-200">{t('spectator.subtitle')}</p>
-        </div>
-
-        {loading ? (
-          <div className="text-center"><div className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto" /></div>
-        ) : matches.length === 0 ? (
-          <div className="text-center text-blue-200 py-12">
-            <Eye className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg">{t('spectator.no_matches')}</p>
-            <p className="text-sm mt-2">{t('spectator.matches_appear')}</p>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {matches.map((m, i) => (
-              <motion.div key={m.match_id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-                <Card data-testid={`spectate-match-${m.match_id}`} className="p-6 bg-white/10 backdrop-blur-md border-white/20 cursor-pointer hover:bg-white/15 transition-all" onClick={() => navigate(`/spectate/${m.match_id}`)}>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-emerald-300 flex items-center gap-1"><Eye className="w-3 h-3" /> {t('spectator.live')}</span>
-                    <span className="text-xs text-blue-300">Q{(m.current_question || 0) + 1}</span>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-medium">{m.player1_name || 'Joueur 1'}</span>
-                      <span className="text-yellow-400 font-bold">{m.player1_score || 0}</span>
-                    </div>
-                    <div className="text-center text-xs text-blue-300">VS</div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-medium">{m.player2_name || 'Joueur 2'}</span>
-                      <span className="text-yellow-400 font-bold">{m.player2_score || 0}</span>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        )}
+  return (
+    <div className="fixed inset-0 bg-black">
+      <Button onClick={() => navigate('/dashboard')} variant="ghost" className="absolute top-4 left-4 z-50 text-white bg-black/40 rounded-full w-10 h-10 p-0 flex items-center justify-center border border-white/10">
+        <ArrowLeft className="w-5 h-5" />
+      </Button>
+      <div ref={containerRef} onScroll={handleScroll} className="h-full w-full overflow-y-scroll snap-y snap-mandatory hide-scrollbar">
+        {matches.map((match, index) => (
+          <SpectatorMatchSlide key={match.match_id} match={match} isActive={index === activeIndex} />
+        ))}
       </div>
     </div>
   );
 };
 
 const SpectatorView = () => {
-  const navigate = useNavigate();
-  const { matchId } = useParams();
-  const { t } = useTranslation();
-  const socketRef = useRef(null);
-  const [matchData, setMatchData] = useState(null);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [scores, setScores] = useState({ player1: 0, player2: 0 });
-  const [gameState, setGameState] = useState('connecting');
-  const [finalResult, setFinalResult] = useState(null);
-
-  useEffect(() => {
-    socketRef.current = io(BACKEND_URL, {
-      path: '/api/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnection: true
-    });
-
-    socketRef.current.on('connect', () => {
-      socketRef.current.emit('join_duo_room', { match_id: matchId, user_id: 'spectator', role: 'spectator' });
-    });
-
-    socketRef.current.on('joined_room', () => setGameState('watching'));
-
-    socketRef.current.on('new_question', (data) => {
-      setCurrentQuestion(data);
-      setGameState('watching');
-    });
-
-    socketRef.current.on('round_results', (data) => {
-      if (data.player1) setScores(prev => ({ ...prev, player1: data.player1.total_score }));
-      if (data.player2) setScores(prev => ({ ...prev, player2: data.player2.total_score }));
-    });
-
-    socketRef.current.on('game_end', (data) => {
-      setFinalResult(data);
-      setGameState('finished');
-    });
-
-    axios.get(`${BACKEND_URL}/api/duo/${matchId}`, { withCredentials: true })
-      .then(res => setMatchData(res.data))
-      .catch(() => {});
-
-    return () => { if (socketRef.current) socketRef.current.disconnect(); };
-  }, [matchId]);
-
-  if (gameState === 'connecting') {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white text-lg">Connexion au match...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (gameState === 'finished' && finalResult) {
-    const isDraw = finalResult.winner === 'draw';
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-        <Card className="p-8 bg-white/10 backdrop-blur-md border-white/20 max-w-md w-full mx-4 text-center">
-          <div className="text-6xl mb-4">{isDraw ? '🤝' : '🏆'}</div>
-          <h2 className="text-3xl font-bold text-white mb-6">{isDraw ? 'Match Nul !' : 'Victoire !'}</h2>
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className={`p-4 rounded-lg ${finalResult.winner === 'player1' ? 'bg-emerald-500/20 ring-2 ring-emerald-400' : 'bg-white/5'}`}>
-              <p className="text-blue-200 text-sm">{matchData?.player1_name || 'Joueur 1'}</p>
-              <p className="text-3xl font-bold text-white">{finalResult.player1_score}</p>
-            </div>
-            <div className={`p-4 rounded-lg ${finalResult.winner === 'player2' ? 'bg-emerald-500/20 ring-2 ring-emerald-400' : 'bg-white/5'}`}>
-              <p className="text-blue-200 text-sm">{matchData?.player2_name || 'Joueur 2'}</p>
-              <p className="text-3xl font-bold text-white">{finalResult.player2_score}</p>
-            </div>
-          </div>
-          <Button onClick={() => navigate('/spectate')} className="bg-white/10 border-white/20 text-white hover:bg-white/20">{t('spectator.back_matches')}</Button>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-      <div className="relative z-10 container mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-6">
-          <Button onClick={() => navigate('/spectate')} variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Quitter
-          </Button>
-          <span className="flex items-center gap-2 text-emerald-300 text-sm font-semibold"><Eye className="w-4 h-4" /> {t('spectator.spectating')}</span>
-        </div>
-
-        <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-blue-400" />
-              <span className="text-white font-semibold">{matchData?.player1_name || 'Joueur 1'}</span>
-            </div>
-            <span className="text-yellow-400 font-bold text-2xl">{scores.player1}</span>
-          </div>
-          <Progress value={(scores.player1 / 2000) * 100} className="h-3 bg-blue-950 mb-3" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-purple-400" />
-              <span className="text-white font-semibold">{matchData?.player2_name || 'Joueur 2'}</span>
-            </div>
-            <span className="text-purple-300 font-bold text-2xl">{scores.player2}</span>
-          </div>
-          <Progress value={(scores.player2 / 2000) * 100} className="h-3 bg-purple-950" />
-        </Card>
-
-        {currentQuestion && (
-          <motion.div key={currentQuestion.question_index} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20">
-              <p className="text-sm text-blue-200 mb-2">Question {currentQuestion.question_index + 1}/{currentQuestion.total_questions}</p>
-              <h2 className="text-xl font-bold text-white mb-4">{currentQuestion.text}</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {currentQuestion.options.map((opt, idx) => (
-                  <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10 text-white text-sm">{opt}</div>
-                ))}
-              </div>
-            </Card>
-          </motion.div>
-        )}
-
-        {!currentQuestion && gameState === 'watching' && (
-          <div className="text-center py-12">
-            <div className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-blue-200">{t('spectator.waiting_question')}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+    const navigate = useNavigate();
+    useEffect(() => { navigate('/spectate'); }, [navigate]);
+    return null;
+}
 
 export { SpectatorList, SpectatorView };

@@ -18,10 +18,16 @@ const ModeDuo = () => {
   const [friendCode, setFriendCode] = useState('');
   const [matchData, setMatchData] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [difficulty, setDifficulty] = useState('moyen');
+  const [numModes, setNumModes] = useState(1);
 
   const createMatch = async () => {
     try {
-      const response = await axios.post(`${BACKEND_URL}/api/duo/matchmaking`, { mode: 'friend' }, { withCredentials: true });
+      const response = await axios.post(`${BACKEND_URL}/api/duo/matchmaking`, { 
+        mode: 'friend',
+        difficulty: difficulty,
+        num_modes: numModes
+      }, { withCredentials: true });
       setMatchData(response.data);
       setMode('waiting');
       startPolling(response.data.match_id, response.data.role, response.data.user_id);
@@ -77,6 +83,20 @@ const ModeDuo = () => {
                 </Button>
               </div>
             </div>
+
+            {matchData?.selected_modes && (
+              <div className="mb-6 bg-white/5 rounded-xl p-4 border border-white/10">
+                <p className="text-white text-sm font-bold mb-3 uppercase tracking-wider">Modes Sélectionnés ({matchData.selected_modes.length})</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {matchData.selected_modes.map((m, i) => (
+                    <span key={i} className="px-3 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-indigo-400/30 rounded-full text-sm font-medium text-indigo-200">
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <Button onClick={() => navigate('/games')} variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">{t('duo.cancel')}</Button>
           </Card>
@@ -114,9 +134,42 @@ const ModeDuo = () => {
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center mx-auto mb-4">
                 <Users className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4 text-center">{t('duo.create_match')}</h3>
-              <p className="text-blue-200 mb-6 text-center">{t('duo.create_desc')}</p>
-              <Button data-testid="create-duo-match" onClick={createMatch} className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white">{t('duo.create_match')}</Button>
+              <h3 className="text-2xl font-bold text-white mb-2 text-center">{t('duo.create_match')}</h3>
+              <p className="text-blue-200 mb-6 text-center text-sm">{t('duo.create_desc')}</p>
+              
+              <div className="space-y-4 mb-6 text-left">
+                <div>
+                  <label className="block text-white text-sm font-medium mb-1">Niveau de difficulté</label>
+                  <select 
+                    value={difficulty} 
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="très faible" className="bg-blue-900 text-white">Très faible</option>
+                    <option value="faible" className="bg-blue-900 text-white">Faible</option>
+                    <option value="moyen" className="bg-blue-900 text-white">Moyen</option>
+                    <option value="un peu au-dessus de la moyenne" className="bg-blue-900 text-white">Un peu au-dessus de la moyenne</option>
+                    <option value="fort" className="bg-blue-900 text-white">Fort</option>
+                    <option value="très fort" className="bg-blue-900 text-white">Très fort</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-white text-sm font-medium mb-1">Nombre de modes</label>
+                  <select 
+                    value={numModes} 
+                    onChange={(e) => setNumModes(Number(e.target.value))}
+                    className="w-full bg-white/10 border border-white/20 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={1} className="bg-blue-900 text-white">1 Mode (Rapide)</option>
+                    <option value={2} className="bg-blue-900 text-white">2 Modes</option>
+                    <option value={3} className="bg-blue-900 text-white">3 Modes (Standard)</option>
+                    <option value={5} className="bg-blue-900 text-white">5 Modes (Long)</option>
+                  </select>
+                </div>
+              </div>
+
+              <Button data-testid="create-duo-match" onClick={createMatch} className="w-full py-6 text-lg bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white">{t('duo.create_match')}</Button>
             </Card>
           </motion.div>
 

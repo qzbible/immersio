@@ -7,15 +7,21 @@ import { Check, X } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const VraiFaux = ({ onSubmit }) => {
-  const [gameData, setGameData] = useState(null);
+const VraiFaux = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
+  const [gameData, setGameData] = useState(initialGameData || null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
+  const [loading, setLoading] = useState(!initialGameData);
 
   React.useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   const fetchGameData = async () => {
     try {
@@ -33,12 +39,21 @@ const VraiFaux = ({ onSubmit }) => {
   };
 
   const handleAnswer = (answer) => {
+    const isCorrect = answer === gameData.statements[currentIndex].answer;
     setAnswers({ ...answers, [`q_${currentIndex}`]: answer });
+    
+    const newPoints = accumulatedPoints + (isCorrect ? 100 : 0);
+    setAccumulatedPoints(newPoints);
     
     if (currentIndex < gameData.statements.length - 1) {
       setTimeout(() => setCurrentIndex(currentIndex + 1), 400);
     } else {
-      setTimeout(() => onSubmit({ ...answers, [`q_${currentIndex}`]: answer }), 400);
+      setTimeout(() => {
+        if (onSubmit) {
+          if (isMultiplayer) onSubmit(answer, true, newPoints);
+          else onSubmit({ ...answers, [`q_${currentIndex}`]: answer });
+        }
+      }, 400);
     }
   };
 

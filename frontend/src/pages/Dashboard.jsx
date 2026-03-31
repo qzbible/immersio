@@ -6,11 +6,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Sparkles, Trophy, Heart, Coins, Crown, BookOpen, Award, Zap, LogOut, Shield } from 'lucide-react';
+import { Trophy, Heart, Coins, Crown, Zap, LogOut, Shield, Play, Sparkles, Flame, Tv, Gamepad2, Users, Medal } from 'lucide-react';
 import DailyMannaModal from '@/components/DailyMannaModal';
 import ChurchModal from '@/components/ChurchModal';
+import OrbitalAvatar from '@/components/OrbitalAvatar';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,6 +19,7 @@ const Dashboard = () => {
   const { t } = useTranslation();
   const { user, setUser, clearUser } = useAuthStore();
   const [badges, setBadges] = useState([]);
+  const [gameModes, setGameModes] = useState([]);
   const [dailyMannaStatus, setDailyMannaStatus] = useState({ can_play: false, streak: 0 });
   const [showDailyManna, setShowDailyManna] = useState(false);
   const [showChurchModal, setShowChurchModal] = useState(false);
@@ -28,14 +29,16 @@ const Dashboard = () => {
 
   const fetchUserData = async () => {
     try {
-      const [userRes, badgesRes, dailyRes] = await Promise.all([
+      const [userRes, badgesRes, dailyRes, modesRes] = await Promise.all([
         axios.get(`${BACKEND_URL}/api/auth/me`, { withCredentials: true }),
         axios.get(`${BACKEND_URL}/api/badges`, { withCredentials: true }),
-        axios.get(`${BACKEND_URL}/api/daily-manna/status`, { withCredentials: true })
+        axios.get(`${BACKEND_URL}/api/daily-manna/status`, { withCredentials: true }),
+        axios.get(`${BACKEND_URL}/api/game-modes`, { withCredentials: true })
       ]);
       setUser(userRes.data);
       setBadges(badgesRes.data);
       setDailyMannaStatus(dailyRes.data);
+      setGameModes(modesRes.data || []);
       if (dailyRes.data.can_play) setTimeout(() => setShowDailyManna(true), 1000);
     } catch (error) {
       if (error.response?.status === 401) navigate('/');
@@ -64,177 +67,194 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white text-lg">{t('dashboard.loading')}</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
+        <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
       </div>
     );
   }
 
+  // Define modes and prevent duplication
+  const spotlightMode = gameModes.length > 0 ? gameModes[0] : null;
+  const carouselModes = gameModes.length > 1 ? gameModes.slice(1) : [];
+
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-400 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400 rounded-full blur-3xl" />
+    <div className="min-h-screen pb-6 max-w-7xl mx-auto">
+      {/* Header Actions */}
+      <div className="flex justify-between items-center p-4 md:px-8 lg:py-6">
+        <motion.h1 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-3xl lg:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-500" style={{ fontFamily: 'Fraunces, serif' }}>
+          BibleQuest
+        </motion.h1>
+        <div className="flex items-center gap-2 lg:gap-4">
+          <LanguageSwitcher />
+          {user?.is_admin && (
+            <Button onClick={() => navigate('/admin')} variant="ghost" size="icon" className="text-yellow-400 hover:bg-yellow-400/20">
+              <Shield className="w-5 h-5 lg:w-6 lg:h-6" />
+            </Button>
+          )}
+          <Button onClick={handleLogout} variant="ghost" size="icon" className="text-white/60 hover:text-white hover:bg-white/10 hidden sm:flex">
+            <LogOut className="w-5 h-5 lg:w-6 lg:h-6" />
+          </Button>
+        </div>
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <motion.h1 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-4xl font-bold text-white" style={{ fontFamily: 'Fraunces, serif' }}>BibleQuest</motion.h1>
-          <div className="flex items-center gap-3">
-            <LanguageSwitcher />
-            {user?.is_admin && (
-              <Button data-testid="admin-panel-btn" onClick={() => navigate('/admin')} variant="outline" className="bg-yellow-400/10 border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/20">
-                <Shield className="w-4 h-4 mr-2" />Admin
-              </Button>
-            )}
-            <Button data-testid="logout-button" onClick={handleLogout} variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20">
-              <LogOut className="w-4 h-4 mr-2" />{t('dashboard.logout')}
-            </Button>
+      <div className="lg:grid lg:grid-cols-12 lg:gap-8 px-4 md:px-8">
+        
+        {/* LEFT COLUMN: Profile & Quick Options (Desktop) / TOP SECTION (Mobile) */}
+        <div className="lg:col-span-4 flex flex-col gap-6 lg:gap-8 mb-8 lg:mb-0">
+          
+          {/* Hero Section (Avatar & Stats) */}
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white/5 backdrop-blur-md rounded-3xl p-6 border border-white/10 shadow-2xl">
+            <div className="flex flex-col items-center justify-center text-center">
+              <OrbitalAvatar user={user} badges={badges} size={110} />
+              
+              <h2 className="text-2xl font-bold text-white mt-6 mb-1" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                {user?.name}
+                {user?.is_premium && <Crown className="inline w-5 h-5 text-yellow-400 ml-2 -mt-1" />}
+              </h2>
+
+              <div className="w-full mt-3">
+                <div className="flex justify-between text-xs text-blue-200 mb-1 font-medium tracking-wide pb-1">
+                  <span>XP {user?.xp} / {xpForNextLevel}</span>
+                  <span className="text-yellow-400">Niv {user?.level + 1} ➔</span>
+                </div>
+                <Progress value={xpProgress} className="h-2 bg-blue-950/50" />
+              </div>
+
+              {/* Quick Stats row */}
+              <div className="flex w-full items-center justify-between mt-6 bg-black/20 px-4 py-3 rounded-2xl border border-white/5">
+                <div className="flex flex-col items-center">
+                  <Heart className="w-5 h-5 text-red-500 mb-1" />
+                  <span className="text-lg font-bold">{user?.lives}</span>
+                </div>
+                <div className="w-px h-8 bg-white/10"></div>
+                <div className="flex flex-col items-center">
+                  <Coins className="w-5 h-5 text-yellow-500 mb-1" />
+                  <span className="text-lg font-bold">{user?.coins}</span>
+                </div>
+                <div className="w-px h-8 bg-white/10"></div>
+                <div className="flex flex-col items-center">
+                  <Flame className="w-5 h-5 text-orange-500 mb-1" />
+                  <span className="text-lg font-bold">{dailyMannaStatus.streak}</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Social / Multiplayer (Arena) */}
+          <div>
+            <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-purple-400" /> Arène Multijoueur
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div onClick={() => navigate('/duo')} className="bg-gradient-to-br from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors group flex flex-col items-center text-center">
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-500 w-10 h-10 rounded-xl flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform">
+                  <span className="text-xl">&#x2694;&#xFE0F;</span>
+                </div>
+                <h4 className="font-bold text-white text-sm mb-1">Duel</h4>
+              </div>
+              
+              <div onClick={() => navigate('/group')} className="bg-gradient-to-br from-teal-900/40 to-emerald-900/40 border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors group flex flex-col items-center text-center">
+                <div className="bg-gradient-to-br from-teal-500 to-emerald-500 w-10 h-10 rounded-xl flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform">
+                  <span className="text-xl">&#x1F465;</span>
+                </div>
+                <h4 className="font-bold text-white text-sm mb-1">Groupe</h4>
+              </div>
+
+              <div onClick={() => navigate('/tournaments')} className="bg-gradient-to-br from-yellow-900/40 to-amber-900/40 border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors group flex flex-col items-center text-center">
+                <div className="bg-gradient-to-br from-yellow-500 to-amber-500 w-10 h-10 rounded-xl flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform">
+                  <Trophy className="text-white w-5 h-5" />
+                </div>
+                <h4 className="font-bold text-white text-sm mb-1">Tournois</h4>
+              </div>
+
+              <div onClick={() => navigate('/spectate')} className="bg-gradient-to-br from-rose-900/40 to-orange-900/40 border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors group flex flex-col items-center text-center">
+                <div className="bg-gradient-to-br from-rose-500 to-orange-500 w-10 h-10 rounded-xl flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform">
+                  <Tv className="text-white w-5 h-5" />
+                </div>
+                <h4 className="font-bold text-white text-sm mb-1">Direct</h4>
+              </div>
+            </div>
           </div>
         </div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20">
-            <div className="flex items-center gap-4 mb-4">
-              <img src={user?.picture || '/default_avatar.png'} alt={user?.name} className="w-20 h-20 rounded-full border-4 border-yellow-400 object-cover" />
-              <div className="flex-1">
-                <h2 data-testid="user-name" className="text-2xl font-bold text-white mb-1" style={{ fontFamily: 'Manrope, sans-serif' }}>{user?.name}</h2>
-                <div className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-yellow-400" />
-                  <span data-testid="user-level" className="text-lg text-yellow-300 font-semibold">{t('dashboard.level')} {user?.level}</span>
+        {/* RIGHT COLUMN: Games Showcase */}
+        <div className="lg:col-span-8 flex flex-col gap-8">
+          
+          {/* Netflix-style Section: À la une */}
+          {spotlightMode && (
+            <div>
+              <h3 className="text-xl lg:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 lg:w-6 lg:h-6 text-yellow-400" /> Mode à la Une
+              </h3>
+              <div 
+                onClick={() => navigate(`/play/${spotlightMode.mode_id}`)}
+                className="group relative h-48 md:h-64 lg:h-[300px] rounded-3xl overflow-hidden cursor-pointer shadow-2xl transition-transform lg:hover:shadow-[0_20px_40px_-15px_rgba(37,99,235,0.4)]"
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${spotlightMode.color || 'from-indigo-600 to-purple-800'} opacity-80 mix-blend-multiply group-hover:scale-105 transition-transform duration-700`}></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050B14] via-[#050B14]/40 to-transparent"></div>
+                
+                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-yellow-400 border border-yellow-400/30">
+                  POPULAIRE
                 </div>
-              </div>
-              {user?.is_premium && (
-                <div className="px-4 py-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-gray-900 font-bold flex items-center gap-2">
-                  <Crown className="w-4 h-4" />Premium
+                
+                <div className="absolute bottom-4 lg:bottom-6 left-4 lg:left-6 right-4 lg:right-6">
+                  <div className="text-4xl lg:text-5xl mb-2 drop-shadow-lg transform transition-transform group-hover:-translate-y-2">{spotlightMode.icon}</div>
+                  <h4 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-1" style={{ fontFamily: 'Fraunces, serif' }}>{spotlightMode.name}</h4>
+                  <p className="text-sm lg:text-base text-blue-100 line-clamp-2 md:w-2/3">{spotlightMode.description}</p>
                 </div>
-              )}
-            </div>
-            <div className="mb-2">
-              <div className="flex justify-between text-sm text-blue-200 mb-1">
-                <span>{t('dashboard.progression')}</span>
-                <span>{user?.xp} / {xpForNextLevel} XP</span>
-              </div>
-              <Progress value={xpProgress} className="h-3 bg-blue-950" />
-            </div>
-            <div className="grid grid-cols-3 gap-4 mt-4">
-              <div className="text-center p-3 rounded-lg bg-white/5">
-                <Heart className="w-6 h-6 text-red-400 mx-auto mb-1" />
-                <div data-testid="user-lives" className="text-2xl font-bold text-white">{user?.lives}</div>
-                <div className="text-xs text-blue-200">{t('dashboard.lives')}</div>
-              </div>
-              <div className="text-center p-3 rounded-lg bg-white/5">
-                <Coins className="w-6 h-6 text-yellow-400 mx-auto mb-1" />
-                <div data-testid="user-coins" className="text-2xl font-bold text-white">{user?.coins}</div>
-                <div className="text-xs text-blue-200">{t('dashboard.coins')}</div>
-              </div>
-              <div className="text-center p-3 rounded-lg bg-white/5">
-                <Zap className="w-6 h-6 text-purple-400 mx-auto mb-1" />
-                <div className="text-2xl font-bold text-white">{dailyMannaStatus.streak}</div>
-                <div className="text-xs text-blue-200">{t('dashboard.streak')}</div>
+                
+                {/* Play Button overlay */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 backdrop-blur-[2px]">
+                  <div className="bg-white/20 p-4 lg:p-6 rounded-full border-2 border-white backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.3)]">
+                    <Play className="w-8 h-8 lg:w-10 lg:h-10 text-white translate-x-1" />
+                  </div>
+                </div>
               </div>
             </div>
-          </Card>
-        </motion.div>
+          )}
 
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
-            <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 h-full hover:bg-white/15 transition-all cursor-pointer" onClick={() => navigate('/campaign')}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>{t('dashboard.campaign_mode')}</h3>
-                  <p className="text-blue-200">{t('dashboard.campaign_desc')}</p>
-                </div>
-                <BookOpen className="w-12 h-12 text-yellow-400" />
+          {/* Netflix-style Section: Tous les modes (Horizontal Carousel) */}
+          {carouselModes.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4 pr-2">
+                <h3 className="text-xl lg:text-2xl font-bold text-white flex items-center gap-2">
+                  <Gamepad2 className="w-5 h-5 lg:w-6 lg:h-6 text-blue-400" /> Explorer
+                </h3>
+                <Button variant="link" className="text-blue-300 hover:text-white lg:text-sm" onClick={() => navigate('/games')}>
+                  Voir tout ➔
+                </Button>
               </div>
-              <Button data-testid="play-campaign-button" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white">{t('dashboard.play_now')}</Button>
-            </Card>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
-            <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 h-full hover:bg-white/15 transition-all cursor-pointer" onClick={() => navigate('/games')}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>{t('dashboard.all_modes')}</h3>
-                  <p className="text-blue-200">{t('dashboard.all_modes_desc')}</p>
-                </div>
-                <Sparkles className="w-12 h-12 text-yellow-400" />
-              </div>
-              <Button data-testid="all-games-button" className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white">{t('dashboard.discover')}</Button>
-            </Card>
-          </motion.div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
-            <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 h-full hover:bg-white/15 transition-all cursor-pointer" onClick={() => navigate('/premium')}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>{t('dashboard.become_premium')}</h3>
-                  <p className="text-blue-200">{t('dashboard.premium_desc')}</p>
-                </div>
-                <Crown className="w-12 h-12 text-yellow-400" />
-              </div>
-              <Button data-testid="premium-button" className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-gray-900 font-bold">{t('dashboard.see_offers')}</Button>
-            </Card>
-          </motion.div>
-        </div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20">
-            <h3 className="text-2xl font-bold text-white mb-4 flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              <Award className="w-6 h-6 text-yellow-400" />{t('dashboard.your_badges')}
-            </h3>
-            {badges.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {badges.map((badge, index) => (
-                  <motion.div key={badge.badge_id} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5 + index * 0.1 }} className="text-center p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
-                    <div className="text-4xl mb-2">{badge.icon}</div>
-                    <div className="text-white font-semibold text-sm">{badge.name}</div>
-                    <div className="text-xs text-blue-200 mt-1">{badge.description}</div>
-                  </motion.div>
+              
+              {/* Horizontal Scroll Container */}
+              <div className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-4 pb-4 -mx-4 px-4 md:mx-0 md:px-0 lg:pb-6">
+                {carouselModes.map((mode) => (
+                  <div 
+                    key={mode.mode_id}
+                    onClick={() => navigate(`/play/${mode.mode_id}`)}
+                    className="snap-start shrink-0 w-[220px] md:w-[260px] lg:w-[280px] h-[300px] lg:h-[340px] rounded-3xl overflow-hidden cursor-pointer relative group flex flex-col justify-end shadow-xl border border-white/5 lg:hover:-translate-y-3 transition-transform duration-300"
+                  >
+                    <div className={`absolute inset-0 bg-gradient-to-b ${mode.color || 'from-blue-600 to-blue-900'} opacity-60 transition-opacity duration-500 group-hover:opacity-90`}></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0f24] via-[#0a0f24]/50 to-transparent"></div>
+                    
+                    <div className="absolute top-0 left-0 w-full p-4 lg:p-5 flex justify-between items-start">
+                      <span className="text-4xl drop-shadow-lg">{mode.icon}</span>
+                      <span className="bg-white/10 backdrop-blur-md text-xs px-2 py-1 rounded-md border border-white/10 shadow-lg font-mono">
+                        {mode.difficulty || 'Normal'}
+                      </span>
+                    </div>
+                    
+                    <div className="relative z-10 p-4 lg:p-5 transform transition-transform duration-300 group-hover:-translate-y-2">
+                      <h4 className="text-xl lg:text-2xl font-black text-white leading-tight mb-2" style={{ fontFamily: 'Fraunces, serif' }}>{mode.name}</h4>
+                      <p className="text-sm text-blue-100/80 line-clamp-2 mb-4">{mode.description}</p>
+                      <div className="flex items-center gap-2 text-xs font-bold font-mono text-yellow-400 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Play className="w-4 h-4" /> JOUER
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <Sparkles className="w-16 h-16 text-yellow-400 mx-auto mb-4 opacity-50" />
-                <p className="text-blue-200">{t('dashboard.play_to_unlock')}</p>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
-          <Card onClick={() => navigate('/duo')} className="p-4 bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all cursor-pointer">
-            <div className="text-center">
-              <div className="text-3xl mb-2">&#x2694;&#xFE0F;</div>
-              <p className="text-white font-semibold">{t('dashboard.duo_mode')}</p>
-              <p className="text-xs text-blue-200">{t('dashboard.duo_desc')}</p>
             </div>
-          </Card>
-          <Card onClick={() => navigate('/group')} className="p-4 bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all cursor-pointer">
-            <div className="text-center">
-              <div className="text-3xl mb-2">&#x1F465;</div>
-              <p className="text-white font-semibold">{t('dashboard.group_mode')}</p>
-              <p className="text-xs text-blue-200">{t('dashboard.group_desc')}</p>
-            </div>
-          </Card>
-          <Card onClick={() => navigate('/leaderboard')} className="p-4 bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all cursor-pointer">
-            <div className="text-center">
-              <div className="text-3xl mb-2">&#x1F3C6;</div>
-              <p className="text-white font-semibold">{t('dashboard.leaderboard')}</p>
-              <p className="text-xs text-blue-200">{t('dashboard.top_players')}</p>
-            </div>
-          </Card>
-          <Card onClick={() => navigate('/achievements')} className="p-4 bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all cursor-pointer">
-            <div className="text-center">
-              <div className="text-3xl mb-2">&#x1F396;&#xFE0F;</div>
-              <p className="text-white font-semibold">{t('dashboard.achievements')}</p>
-              <p className="text-xs text-blue-200">{t('dashboard.rewards')}</p>
-            </div>
-          </Card>
+          )}
         </div>
       </div>
 

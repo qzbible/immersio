@@ -6,15 +6,21 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const QuiADitQuoi = ({ onSubmit }) => {
-  const [gameData, setGameData] = useState(null);
+const QuiADitQuoi = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
+  const [gameData, setGameData] = useState(initialGameData || null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
+  const [loading, setLoading] = useState(!initialGameData);
 
   React.useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   const fetchGameData = async () => {
     try {
@@ -32,12 +38,21 @@ const QuiADitQuoi = ({ onSubmit }) => {
   };
 
   const handleAnswer = (answer) => {
+    const isCorrect = answer === gameData.quotes[currentIndex].answer;
     setAnswers({ ...answers, [`q_${currentIndex}`]: answer });
+    
+    const newPoints = accumulatedPoints + (isCorrect ? 100 : 0);
+    setAccumulatedPoints(newPoints);
     
     if (currentIndex < gameData.quotes.length - 1) {
       setTimeout(() => setCurrentIndex(currentIndex + 1), 500);
     } else {
-      setTimeout(() => onSubmit({ ...answers, [`q_${currentIndex}`]: answer }), 500);
+      setTimeout(() => {
+        if (onSubmit) {
+          if (isMultiplayer) onSubmit(answer, true, newPoints);
+          else onSubmit({ ...answers, [`q_${currentIndex}`]: answer });
+        }
+      }, 500);
     }
   };
 

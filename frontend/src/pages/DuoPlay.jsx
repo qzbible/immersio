@@ -8,6 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Trophy, Zap, Heart, Clock } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
+import Anagrammes from '@/components/games/Anagrammes';
+import MotsCaches from '@/components/games/MotsCaches';
+import ChronoVersets from '@/components/games/ChronoVersets';
+import QuiADitQuoi from '@/components/games/QuiADitQuoi';
+import VraiFaux from '@/components/games/VraiFaux';
+import LaManne from '@/components/games/LaManne';
+import BrebisPerdue from '@/components/games/BrebisPerdue';
+import LabyrintheExode from '@/components/games/LabyrintheExode';
+import MemoryBiblique from '@/components/games/MemoryBiblique';
+import MultiplierPains from '@/components/games/MultiplierPains';
+import TriLivres from '@/components/games/TriLivres';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -32,6 +43,9 @@ const DuoPlay = () => {
   const [myRole, setMyRole] = useState(null);
 
   const emojis = ['🙏', '🔥', '😮', '🕊️', '💪', '⭐'];
+  // Prevent double-submission per round
+  const hasSubmittedRef = useRef(false);
+  const currentQuestionRef = useRef(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -72,6 +86,8 @@ const DuoPlay = () => {
     socketRef.current.on('new_question', (data) => {
       console.log('New question:', data);
       setCurrentQuestion(data);
+      currentQuestionRef.current = data;
+      hasSubmittedRef.current = false; // Reset for new round
       setGameState('playing');
       setTimeLeft(data.timer);
       setSelectedAnswer(null);
@@ -130,14 +146,20 @@ const DuoPlay = () => {
     if (gameState === 'playing' && timeLeft > 0 && !showResults) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
-    } else if (timeLeft === 0 && !showResults && !selectedAnswer) {
-      handleAnswer(-1);
+    } else if (timeLeft === 0 && !showResults && !hasSubmittedRef.current) {
+      // Time is up — submit regardless of game type so the server can advance
+      if (currentQuestionRef.current?.type === 'mcq') {
+        handleAnswer(-1);
+      } else {
+        // Minigame ran out of time without self-submitting, force a 0-point timeout
+        handleMinigameSubmit(false, 0);
+      }
     }
-  }, [timeLeft, gameState, showResults, selectedAnswer]);
+  }, [timeLeft, gameState, showResults]);
 
   const handleAnswer = (answerIndex) => {
-    if (selectedAnswer !== null || showResults) return;
-    
+    if (hasSubmittedRef.current || showResults) return;
+    hasSubmittedRef.current = true;
     setSelectedAnswer(answerIndex);
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('userId');
@@ -147,6 +169,49 @@ const DuoPlay = () => {
       user_id: userId,
       answer_index: answerIndex,
       time_taken: 15 - timeLeft
+    });
+    
+    // Broadcast to spectators
+    if (answerIndex >= 0 && currentQuestion?.options?.[answerIndex]) {
+      broadcastAction('answer', { text: currentQuestion.options[answerIndex], is_correct: null });
+    } else {
+      broadcastAction('timeout', { text: '⏱️ Temps écoulé' });
+    }
+  };
+
+  // Used by minigame components to submit their own scored result
+  const handleMinigameSubmit = (isCorrect, points, actionText = null) => {
+    if (hasSubmittedRef.current || showResults) return;
+    hasSubmittedRef.current = true;
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('userId');
+    
+    socketRef.current.emit('submit_answer', {
+      match_id: matchId,
+      user_id: userId,
+      is_correct: isCorrect,
+      points: points,
+      time_taken: 0
+    });
+
+    // Broadcast to spectators
+    broadcastAction('minigame_submit', {
+      is_correct: isCorrect,
+      points: points,
+      text: actionText || (isCorrect ? `✅ +${points} pts` : '⏱️ Temps écoulé'),
+      game_type: currentQuestionRef.current?.type
+    });
+  };
+
+  // Emit a live action to spectators watching this match
+  const broadcastAction = (actionType, payload = {}) => {
+    if (!socketRef.current || !myRole) return;
+    socketRef.current.emit('game_action', {
+      match_id: matchId,
+      role: myRole,
+      action_type: actionType,
+      game_type: currentQuestionRef.current?.type || 'mcq',
+      ...payload
     });
   };
 
@@ -325,46 +390,165 @@ const DuoPlay = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -50 }}
           >
-            <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 mb-6">
-              <p className="text-sm text-blue-200 mb-2">{currentQuestion.book}</p>
-              <h2 className="text-2xl font-bold text-white mb-1">
-                {currentQuestion.text}
-              </h2>
-              {opponentAnswered && !showResults && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-purple-300 text-sm mt-2"
-                >
-                  {t('duo.opponent_answered')}
-                </motion.p>
-              )}
-            </Card>
+            {currentQuestion.type === 'anagrammes' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <Anagrammes 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(answer, isCorrect, points) => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    socketRef.current.emit('submit_answer', {
+                      match_id: matchId,
+                      user_id: urlParams.get('userId'),
+                      is_correct: isCorrect,
+                      points: points,
+                      time_taken: 15 - timeLeft
+                    });
+                  }} 
+                />
+              </div>
+            ) : currentQuestion.type === 'mots_caches' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <MotsCaches 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(answer, isCorrect, points) => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    socketRef.current.emit('submit_answer', {
+                      match_id: matchId,
+                      user_id: urlParams.get('userId'),
+                      is_correct: isCorrect || true, // Force true for Mots Caches
+                      points: points,
+                      time_taken: 30 - timeLeft
+                    });
+                  }} 
+                />
+              </div>
+            ) : currentQuestion.type === 'chrono_versets' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <ChronoVersets 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(answers, isCorrect, points) => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    socketRef.current.emit('submit_answer', {
+                      match_id: matchId,
+                      user_id: urlParams.get('userId'),
+                      is_correct: true,
+                      points: points,
+                      time_taken: 15 - timeLeft
+                    });
+                  }} 
+                />
+              </div>
+            ) : currentQuestion.type === 'qui_a_dit' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <QuiADitQuoi 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(answers, isCorrect, points) => handleMinigameSubmit(true, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'vrai_faux' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <VraiFaux 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(answers, isCorrect, points) => handleMinigameSubmit(true, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'la_manne' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <LaManne 
+                  isMultiplayer={true} 
+                  initialTimeLeft={timeLeft}
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(true, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'brebis_perdue' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <BrebisPerdue 
+                  isMultiplayer={true} 
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(isCorrect, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'labyrinthe_exode' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <LabyrintheExode 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(isCorrect, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'memory_biblique' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <MemoryBiblique 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  initialTimeLeft={timeLeft}
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(isCorrect, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'multiplier_pains' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <MultiplierPains 
+                  isMultiplayer={true} 
+                  initialTimeLeft={timeLeft}
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(isCorrect, points)} 
+                />
+              </div>
+            ) : currentQuestion.type === 'tri_livres' ? (
+              <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
+                <TriLivres 
+                  gameData={currentQuestion.gameData} 
+                  isMultiplayer={true} 
+                  onSubmit={(data, isCorrect, points) => handleMinigameSubmit(isCorrect, points)} 
+                />
+              </div>
+            ) : (
+              <>
+                <Card className="p-6 bg-white/10 backdrop-blur-md border-white/20 mb-6">
+                  <p className="text-sm text-blue-200 mb-2">{currentQuestion.book}</p>
+                  <h2 className="text-2xl font-bold text-white mb-1">
+                    {currentQuestion.text}
+                  </h2>
+                  {opponentAnswered && !showResults && (
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-purple-300 text-sm mt-2"
+                    >
+                      {t('duo.opponent_answered')}
+                    </motion.p>
+                  )}
+                </Card>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              {currentQuestion.options.map((option, index) => (
-                <motion.button
-                  key={index}
-                  whileHover={{ scale: showResults ? 1 : 1.02 }}
-                  whileTap={{ scale: showResults ? 1 : 0.98 }}
-                  onClick={() => handleAnswer(index)}
-                  disabled={selectedAnswer !== null || showResults}
-                  className={`p-4 rounded-xl text-left font-medium transition-all ${
-                    showResults && roundResult
-                      ? index === roundResult.correct_answer
-                        ? 'bg-emerald-500/50 border-2 border-emerald-400 text-white'
-                        : index === selectedAnswer
-                        ? 'bg-red-500/50 border-2 border-red-400 text-white'
-                        : 'bg-white/5 border border-white/10 text-white/50'
-                      : selectedAnswer === index
-                      ? 'bg-blue-500/50 border-2 border-blue-400 text-white'
-                      : 'bg-white/10 border border-white/20 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {option}
-                </motion.button>
-              ))}
-            </div>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  {currentQuestion.options && currentQuestion.options.map((option, index) => (
+                    <motion.button
+                      key={index}
+                      whileHover={{ scale: showResults ? 1 : 1.02 }}
+                      whileTap={{ scale: showResults ? 1 : 0.98 }}
+                      onClick={() => handleAnswer(index)}
+                      disabled={selectedAnswer !== null || showResults}
+                      className={`p-4 rounded-xl text-left font-medium transition-all ${
+                        showResults && roundResult
+                          ? index === roundResult.correct_answer
+                            ? 'bg-emerald-500/50 border-2 border-emerald-400 text-white'
+                            : index === selectedAnswer
+                            ? 'bg-red-500/50 border-2 border-red-400 text-white'
+                            : 'bg-white/5 border border-white/10 text-white/50'
+                          : selectedAnswer === index
+                          ? 'bg-blue-500/50 border-2 border-blue-400 text-white'
+                          : 'bg-white/10 border border-white/20 text-white hover:bg-white/20'
+                      }`}
+                    >
+                      {option}
+                    </motion.button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {showResults && roundResult && (
               <motion.div

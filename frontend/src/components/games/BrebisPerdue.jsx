@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 
-const BrebisPerdue = ({ onSubmit }) => {
+const BrebisPerdue = ({ onSubmit, isMultiplayer, initialTimeLeft = 30 }) => {
   const [sheeps, setSheeps] = useState([]);
   const [found, setFound] = useState(false);
   const [clicks, setClicks] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(15);
+  const [timeLeft, setTimeLeft] = useState(initialTimeLeft);
 
   useEffect(() => {
+    const targetIndex = Math.floor(Math.random() * 16);
     const newSheeps = Array(16).fill(null).map((_, i) => ({
       id: i,
-      isLost: i === Math.floor(Math.random() * 16),
-      emoji: i === Math.floor(Math.random() * 16) ? '🐑' : '🐏'
+      isLost: i === targetIndex,
+      emoji: i === targetIndex ? '🐑' : '🐏'
     }));
     setSheeps(newSheeps);
   }, []);
@@ -21,7 +22,10 @@ const BrebisPerdue = ({ onSubmit }) => {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
     } else if (timeLeft === 0 && !found) {
-      onSubmit({ matches: 0 });
+      if (onSubmit) {
+        if (isMultiplayer) onSubmit(null, false, 0);
+        else onSubmit({ matches: 0 });
+      }
     }
   }, [timeLeft, found]);
 
@@ -31,7 +35,11 @@ const BrebisPerdue = ({ onSubmit }) => {
     if (sheep.isLost) {
       setFound(true);
       setTimeout(() => {
-        onSubmit({ matches: 1 });
+        if (onSubmit) {
+          const points = Math.max(50, 200 - (15 - timeLeft)*10);
+          if (isMultiplayer) onSubmit(null, true, points);
+          else onSubmit({ matches: 1 });
+        }
       }, 1000);
     }
   };

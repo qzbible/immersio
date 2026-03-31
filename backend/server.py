@@ -171,7 +171,7 @@ async def duo_matchmaking(request: Request, match_req: DuoMatchRequest, authoriz
     
     if not user.is_premium:
         quota = await db.duo_quotas.find_one({"user_id": user.user_id, "date": today}, {"_id": 0})
-        if quota and quota.get("count", 0) >= 3:
+        if quota and quota.get("count", 0) >= 300:
             raise HTTPException(status_code=403, detail="Quota atteint. Passez Premium!")
     
     if match_req.friend_code:
@@ -184,9 +184,21 @@ async def duo_matchmaking(request: Request, match_req: DuoMatchRequest, authoriz
             raise HTTPException(status_code=404, detail="Match non trouvé")
     
     friend_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    
+    AVAILABLE_MODES = [
+        "Vrai ou Faux", "Qui dit quoi ?", "Mots Cachés", "La Manne", 
+        "Chrono Versets", "Anagrammes", "Brebis Perdue", "Labyrinthe Exode", 
+        "Memory Biblique", "Multiplier les Pains", "Tri Livres"
+    ]
+    num_to_pick = match_req.num_modes if match_req.num_modes and match_req.num_modes <= len(AVAILABLE_MODES) else 1
+    selected_modes = random.sample(AVAILABLE_MODES, num_to_pick)
+    
     match = {
         "match_id": f"duo_{uuid.uuid4().hex[:12]}",
         "friend_code": friend_code,
+        "difficulty": match_req.difficulty or "moyen",
+        "num_modes": match_req.num_modes or 1,
+        "selected_modes": selected_modes,
         "player1_id": user.user_id, "player1_name": user.name, "player1_picture": user.picture, "player1_score": 0, "player1_answers": [],
         "player2_id": None, "player2_name": None, "player2_picture": None, "player2_score": 0, "player2_answers": [],
         "status": "waiting", "current_question": 0, "questions": [],
@@ -197,7 +209,14 @@ async def duo_matchmaking(request: Request, match_req: DuoMatchRequest, authoriz
     if not user.is_premium:
         await db.duo_quotas.update_one({"user_id": user.user_id, "date": today}, {"$inc": {"count": 1}, "$setOnInsert": {"date": today}}, upsert=True)
     
-    return {"match_id": match["match_id"], "friend_code": friend_code, "role": "player1", "status": "waiting", "user_id": user.user_id}
+    return {
+        "match_id": match["match_id"], 
+        "friend_code": friend_code, 
+        "role": "player1", 
+        "status": "waiting", 
+        "user_id": user.user_id,
+        "selected_modes": selected_modes
+    }
 
 # ── Duo Static Routes (BEFORE dynamic) ──────────────────────────────
 @api_router.get("/duo/history")
@@ -229,11 +248,33 @@ async def get_duo_leaderboard(request: Request, authorization: Optional[str] = H
 @api_router.get("/duo/active-matches")
 async def get_active_matches(request: Request, authorization: Optional[str] = Header(None)):
     user = await get_current_user(request, authorization)
-    matches = await db.duo_matches.find(
-        {"status": {"$in": ["ready", "playing"]}, "player2_id": {"$ne": None}},
-        {"_id": 0, "match_id": 1, "player1_name": 1, "player2_name": 1, "player1_score": 1, "player2_score": 1, "current_question": 1, "status": 1}
+    
+    # 1. Fetch regular duo matches
+    duo_matches = await db.duo_matches.find(
+        {"status": "playing", "player2_id": {"$ne": None}},
+        {"_id": 0, "match_id": 1, "player1_name": 1, "player2_name": 1, "player1_picture": 1, "player2_picture": 1, "player1_score": 1, "player2_score": 1, "current_question": 1, "status": 1}
     ).to_list(20)
-    return matches
+    
+    # 2. Fetch ongoing tournament matches
+    ongoing_tournaments = await db.tournaments.find({"status": "ongoing"}, {"_id": 0, "brackets": 1, "name": 1}).to_list(10)
+    tournament_matches = []
+    for tour in ongoing_tournaments:
+        for m in tour.get("brackets", []):
+            if m.get("status") == "pending" and m.get("player2", {}).get("user_id") != "BYE":
+                tournament_matches.append({
+                    "match_id": m["match_id"],
+                    "player1_name": m["player1"]["name"],
+                    "player2_name": m["player2"]["name"],
+                    "player1_picture": m["player1"].get("picture"),
+                    "player2_picture": m["player2"].get("picture"),
+                    "player1_score": m.get("player1_score", 0),
+                    "player2_score": m.get("player2_score", 0),
+                    "status": "playing", # Mark as playing for spectator view
+                    "is_tournament": True,
+                    "tournament_name": tour["name"]
+                })
+    
+    return duo_matches + tournament_matches
 
 # Dynamic route AFTER statics
 @api_router.get("/duo/{match_id}")
@@ -527,6 +568,20 @@ async def join_duo_room(sid, data):
     if len(players) >= 2:
         await sio.emit("both_players_ready", {"match_id": match_id}, room=match_id)
 
+@sio.on("spectator_like")
+async def handle_spectator_like(sid, data):
+    match_id = data.get("match_id")
+    if match_id:
+        # Broadcast to everyone in the room except the sender
+        await sio.emit("spectator_like", data, room=match_id, skip_sid=sid)
+
+@sio.on("spectator_comment")
+async def handle_spectator_comment(sid, data):
+    match_id = data.get("match_id")
+    if match_id:
+        # Broadcast to everyone in the room
+        await sio.emit("spectator_comment", data, room=match_id)
+
 @sio.event
 async def player_ready(sid, data):
     match_id = data.get("match_id")
@@ -535,21 +590,186 @@ async def player_ready(sid, data):
         return
     
     if not match.get("questions"):
-        questions = get_quiz_vrai_faux("fr").get("statements", [])[:5]
-        formatted = [{"text": q["text"], "options": ["Vrai", "Faux"], "correct_answer": 0 if q["answer"] else 1} for q in questions]
+        difficulty = match.get("difficulty", "moyen")
+        num_modes = match.get("num_modes", 1)
+        # Generate questions or minigames based on selected_modes
+        selected_modes = match.get("selected_modes", ["Général"])
+        formatted = []
+        
+        # Determine number of rounds per mode
+        rounds_per_mode = 3
+        
+        for mode in selected_modes:
+            if mode == "Anagrammes":
+                from i18n_content import get_anagrammes
+                anagrams = get_anagrammes("fr").get("anagrams", [])
+                random.shuffle(anagrams)
+                # Map one round to an anagram component
+                formatted.append({
+                    "type": "anagrammes", 
+                    "gameData": {"anagrams": anagrams[:5]},
+                    "text": "Déchiffrez l'anagramme",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Anagrammes"
+                })
+            elif mode == "Mots Cachés":
+                from game_utils import generate_word_search_grid
+                from i18n_content import get_mots_caches
+                words = get_mots_caches("fr")
+                grid_size = 12
+                grid_result = generate_word_search_grid(words, grid_size)
+                formatted.append({
+                    "type": "mots_caches",
+                    "gameData": {
+                        "grid_size": grid_size, 
+                        "words": words, 
+                        "grid": grid_result["grid"], 
+                        "placements": grid_result["placements"]
+                    },
+                    "text": "Trouvez les mots cachés",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Mots Cachés"
+                })
+            elif mode == "Chrono Versets":
+                from i18n_content import get_chrono_versets
+                verses = get_chrono_versets("fr").get("verses", [])
+                random.shuffle(verses)
+                formatted.append({
+                    "type": "chrono_versets",
+                    "gameData": {"verses": verses[:4]}, # Usually 4 verses per round
+                    "text": "Complétez le verset (Chrono)",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Chrono Versets"
+                })
+            elif mode == "Qui dit quoi ?":
+                from i18n_content import get_quiz_qui_a_dit
+                quotes = get_quiz_qui_a_dit("fr").get("quotes", [])
+                random.shuffle(quotes)
+                formatted.append({
+                    "type": "qui_a_dit",
+                    "gameData": {"quotes": quotes[:5]},
+                    "text": "Qui a dit quoi ?",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Qui dit quoi ?"
+                })
+            elif mode == "Vrai ou Faux":
+                from i18n_content import get_quiz_vrai_faux
+                statements = get_quiz_vrai_faux("fr").get("statements", [])
+                random.shuffle(statements)
+                formatted.append({
+                    "type": "vrai_faux",
+                    "gameData": {"statements": statements[:5]},
+                    "text": "Vrai ou Faux",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Vrai ou Faux"
+                })
+            elif mode == "La Manne":
+                formatted.append({
+                    "type": "la_manne",
+                    "gameData": {},
+                    "text": "Attrapez La Manne !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "La Manne"
+                })
+            elif mode == "Brebis Perdue":
+                formatted.append({
+                    "type": "brebis_perdue",
+                    "gameData": {},
+                    "text": "Trouvez la brebis perdue !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Brebis Perdue"
+                })
+            elif mode == "Labyrinthe Exode":
+                from i18n_content import get_labyrinthe_questions
+                from game_utils import generate_maze   
+                maze_data = generate_maze(15, 15)
+                questions = get_labyrinthe_questions("fr")
+                random.shuffle(questions)
+                maze_data["questions"] = questions[:10]
+                formatted.append({
+                    "type": "labyrinthe_exode",
+                    "gameData": maze_data,
+                    "text": "Atteignez la terre promise !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Labyrinthe Exode"
+                })
+            elif mode == "Memory Biblique":
+                symbols = ["✝️", "🕊️", "🍞", "🐟", "⚓", "🌟", "💒", "📖"]
+                memory_cards = []
+                for symbol in symbols:
+                    memory_cards.append({"id": f"{symbol}_1", "symbol": symbol})
+                    memory_cards.append({"id": f"{symbol}_2", "symbol": symbol})
+                random.shuffle(memory_cards)
+                formatted.append({
+                    "type": "memory_biblique",
+                    "gameData": {"cards": memory_cards},
+                    "text": "Trouvez les paires !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Memory Biblique"
+                })
+            elif mode == "Multiplier les Pains":
+                formatted.append({
+                    "type": "multiplier_pains",
+                    "gameData": {},
+                    "text": "Multipliez les pains !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Multiplier les Pains"
+                })
+            elif mode == "Tri Livres":
+                formatted.append({
+                    "type": "tri_livres",
+                    "gameData": {},
+                    "text": "Triez les livres !",
+                    "options": [],
+                    "correct_answer": -1,
+                    "book": "Tri Livres"
+                })
+            else:
+                # Fallback MCQ
+                cursor = db.questions.aggregate([
+                    {"$match": {"difficulty": difficulty}},
+                    {"$sample": {"size": rounds_per_mode}}
+                ])
+                fetched = await cursor.to_list(100)
+                if not fetched:
+                    fetched = [{"text": "La Bible est-elle divisée ?", "options": ["Vrai", "Faux"], "correct_answer": 0, "category": mode}]
+                for q in fetched:
+                    formatted.append({"type": "mcq", "text": q["text"], "options": q["options"], "correct_answer": q["correct_answer"], "book": q.get("category", "Général")})
+        
         await db.duo_matches.update_one({"match_id": match_id}, {"$set": {"questions": formatted, "status": "playing"}})
         match["questions"] = formatted
     
     if match.get("questions"):
         q = match["questions"][0]
-        await sio.emit("new_question", {"question_index": 0, "text": q["text"], "options": q["options"], "total_questions": len(match["questions"]), "timer": 15}, room=match_id)
-
+        timer = 120 if q.get("type") == "anagrammes" else 15
+        payload = {
+            "question_index": 0, 
+            "type": q.get("type", "mcq"),
+            "text": q["text"], 
+            "options": q["options"], 
+            "gameData": q.get("gameData"),
+            "total_questions": len(match["questions"]), 
+            "timer": timer
+        }
+        await sio.emit("new_question", payload, room=match_id)
 @sio.event
 async def submit_answer(sid, data):
     match_id = data.get("match_id")
     answer_index = data.get("answer_index")
     user_id = data.get("user_id")
     time_taken = data.get("time_taken", 10)
+    is_correct_payload = data.get("is_correct")
+    points_payload = data.get("points", 100)
     
     match = await db.duo_matches.find_one({"match_id": match_id}, {"_id": 0})
     if not match:
@@ -560,8 +780,13 @@ async def submit_answer(sid, data):
     if q_idx >= len(questions):
         return
     
-    is_correct = answer_index == questions[q_idx].get("correct_answer")
-    points = max(100, 500 - int(time_taken * 50)) if is_correct else 0
+    # Validation logic for minigames vs MCQ
+    if is_correct_payload is not None:
+        is_correct = is_correct_payload
+        points = points_payload if is_correct else 0
+    else:
+        is_correct = answer_index == questions[q_idx].get("correct_answer")
+        points = max(100, 500 - int(time_taken * 50)) if is_correct else 0
     
     role = "player1" if user_id == match.get("player1_id") else "player2"
     update = {f"{role}_score": match.get(f"{role}_score", 0) + points}
@@ -583,14 +808,19 @@ async def submit_answer(sid, data):
     p2_answered = any(a["question_index"] == q_idx for a in p2_answers)
     
     if p1_answered and p2_answered:
-        await sio.emit("round_results", {"question_index": q_idx, "player1": {"total_score": match.get("player1_score", 0)}, "player2": {"total_score": match.get("player2_score", 0)}, "correct_answer": questions[q_idx].get("correct_answer")}, room=match_id)
+        # Re-fetch fresh scores from DB (in-memory match object may be stale)
+        fresh_match = await db.duo_matches.find_one({"match_id": match_id}, {"_id": 0})
+        p1_total = fresh_match.get("player1_score", 0)
+        p2_total = fresh_match.get("player2_score", 0)
+        
+        await sio.emit("round_results", {"question_index": q_idx, "player1": {"total_score": p1_total}, "player2": {"total_score": p2_total}, "correct_answer": questions[q_idx].get("correct_answer")}, room=match_id)
         
         next_q = q_idx + 1
         await db.duo_matches.update_one({"match_id": match_id}, {"$set": {"current_question": next_q}})
         
         if next_q >= len(questions):
-            p1_score = match.get("player1_score", 0)
-            p2_score = match.get("player2_score", 0)
+            p1_score = p1_total
+            p2_score = p2_total
             winner = "player1" if p1_score > p2_score else "player2" if p2_score > p1_score else "draw"
             winner_id = match.get(f"{winner}_id") if winner != "draw" else None
             
@@ -618,14 +848,45 @@ async def submit_answer(sid, data):
             await sio.emit("game_end", {"winner": winner, "player1_score": p1_score, "player2_score": p2_score}, room=match_id)
         else:
             import asyncio
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.8)
             q = questions[next_q]
-            await sio.emit("new_question", {"question_index": next_q, "text": q["text"], "options": q["options"], "total_questions": len(questions), "timer": 15}, room=match_id)
+            # Compute the correct timer per game type
+            game_type = q.get("type", "mcq")
+            if game_type in ["la_manne", "multiplier_pains", "brebis_perdue", "memory_biblique"]:
+                timer = 30
+            elif game_type in ["anagrammes", "mots_caches", "chrono_versets", "labyrinthe_exode"]:
+                timer = 90
+            elif game_type in ["tri_livres", "qui_a_dit", "vrai_faux"]:
+                timer = 30
+            else:
+                timer = 15
+            payload = {
+                "question_index": next_q,
+                "type": game_type,
+                "text": q["text"],
+                "options": q.get("options", []),
+                "gameData": q.get("gameData"),
+                "total_questions": len(questions),
+                "timer": timer
+            }
+            await sio.emit("new_question", payload, room=match_id)
 
 @sio.event
 async def send_emoji(sid, data):
     match_id = data.get("match_id")
     await sio.emit("receive_reaction", data, room=match_id)
+
+@sio.event
+async def game_action(sid, data):
+    """Relay any in-game action to all spectators watching the match."""
+    match_id = data.get("match_id")
+    if not match_id:
+        return
+    # Add timestamp and relay to room  
+    import time
+    data["timestamp"] = time.time()
+    await sio.emit("spectator_action", data, room=match_id)
+
 
 # Group Socket.IO events
 @sio.event

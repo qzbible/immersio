@@ -4,25 +4,34 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/hooks/useTranslation';
 import axios from 'axios';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const LabyrintheExode = ({ onSubmit }) => {
+const LabyrintheExode = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
   const { t, lang } = useTranslation();
-  const [gameData, setGameData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [playerPos, setPlayerPos] = useState(null);
-  const [path, setPath] = useState(new Set());
+  const [gameData, setGameData] = useState(initialGameData || null);
+  const [loading, setLoading] = useState(!initialGameData);
+  const [playerPos, setPlayerPos] = useState(initialGameData?.start || null);
+  const [path, setPath] = useState(new Set(initialGameData ? [`${initialGameData.start[0]}-${initialGameData.start[1]}`] : []));
   const [timeLeft, setTimeLeft] = useState(90);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [showQuestion, setShowQuestion] = useState(false);
   const [questionsCorrect, setQuestionsCorrect] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [steps, setSteps] = useState(0);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
 
   useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setPlayerPos(initialGameData.start);
+      setPath(new Set([`${initialGameData.start[0]}-${initialGameData.start[1]}`]));
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   useEffect(() => {
     if (!gameData || completed || showQuestion) return;
@@ -42,11 +51,17 @@ const LabyrintheExode = ({ onSubmit }) => {
   const handleFinish = useCallback((won) => {
     if (completed) return;
     setCompleted(true);
-    const timeBonus = Math.floor(timeLeft / 15);
+    const timeBonus = won ? Math.floor(timeLeft / 15) * 50 : 0;
+    const finalPoints = accumulatedPoints + timeBonus + (won ? 500 : 0);
+    setAccumulatedPoints(finalPoints);
+    
     setTimeout(() => {
-      onSubmit({ completed: won, questions_correct: questionsCorrect, time_bonus: won ? timeBonus : 0 });
+      if (onSubmit) {
+        if (isMultiplayer) onSubmit(null, won, finalPoints);
+        else onSubmit({ completed: won, questions_correct: questionsCorrect, time_bonus: won ? timeBonus : 0 });
+      }
     }, 1000);
-  }, [completed, timeLeft, questionsCorrect, onSubmit]);
+  }, [completed, timeLeft, questionsCorrect, onSubmit, accumulatedPoints, isMultiplayer]);
 
   useEffect(() => {
     if (!gameData || !playerPos) return;
@@ -101,7 +116,10 @@ const LabyrintheExode = ({ onSubmit }) => {
 
   const answerQuestion = (idx) => {
     const q = gameData.questions[questionIndex];
-    if (idx === q.answer) setQuestionsCorrect(prev => prev + 1);
+    if (idx === q.answer) {
+      setQuestionsCorrect(prev => prev + 1);
+      setAccumulatedPoints(prev => prev + 100);
+    }
     setQuestionIndex(prev => prev + 1);
     setShowQuestion(false);
   };
@@ -119,14 +137,14 @@ const LabyrintheExode = ({ onSubmit }) => {
           <h2 className="text-2xl font-bold text-white mb-2">
             {won ? t('labyrinthe.promised_land') : t('labyrinthe.time_up')}
           </h2>
-          <p className="text-blue-200 mb-2">{t('labyrinthe.steps')} : {steps} | {t('labyrinthe.questions')} : {questionsCorrect}/{gameData.questions.length}</p>
+          <p className="text-blue-200 mb-2">{t('labyrinthe.steps')} : {steps} | {t('labyrinthe.questions')} : {questionsCorrect}/{(gameData.questions || []).length}</p>
           <p className="text-yellow-400 font-bold">{t('labyrinthe.time_left')} : {timeLeft}s</p>
         </Card>
       </div>
     );
   }
 
-  if (showQuestion && questionIndex < gameData.questions.length) {
+  if (showQuestion && gameData.questions && questionIndex < gameData.questions.length) {
     const q = gameData.questions[questionIndex];
     return (
       <div className="max-w-lg mx-auto" data-testid="maze-question">
@@ -151,7 +169,7 @@ const LabyrintheExode = ({ onSubmit }) => {
 
   const viewSize = 9;
   const half = Math.floor(viewSize / 2);
-  const [vpx, vpy] = playerPos;
+  const [vpx, vpy] = playerPos || [0, 1];
   const startX = Math.max(0, Math.min(vpx - half, gameData.width - viewSize));
   const startY = Math.max(0, Math.min(vpy - half, gameData.height - viewSize));
 
@@ -162,7 +180,7 @@ const LabyrintheExode = ({ onSubmit }) => {
         <span className={`font-bold text-lg ${timeLeft <= 15 ? 'text-red-400 animate-pulse' : 'text-yellow-400'}`}>
           {timeLeft}s
         </span>
-        <span className="text-emerald-300 font-semibold">Q: {questionsCorrect}/{gameData.questions.length}</span>
+        <span className="text-emerald-300 font-semibold">Q: {questionsCorrect}/{(gameData.questions || []).length}</span>
       </div>
 
       <Card className="p-3 bg-white/5 backdrop-blur-md border-white/20 mb-4">
@@ -201,13 +219,41 @@ const LabyrintheExode = ({ onSubmit }) => {
         </div>
       </Card>
 
-      <div className="grid grid-cols-3 gap-2 max-w-[180px] mx-auto">
+      <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto mt-4 mb-8 select-none touch-none">
         <div />
-        <Button data-testid="move-up" onClick={() => move(0, -1)} size="sm" className="bg-white/10 text-white hover:bg-white/20">^</Button>
+        <Button 
+          data-testid="move-up" 
+          onPointerDown={(e) => { e.preventDefault(); move(0, -1); }} 
+          size="lg" 
+          className="bg-white/10 border border-white/20 text-white hover:bg-white/20 h-14 w-14 rounded-xl active:scale-95"
+        >
+          <ArrowUp className="w-8 h-8" />
+        </Button>
         <div />
-        <Button data-testid="move-left" onClick={() => move(-1, 0)} size="sm" className="bg-white/10 text-white hover:bg-white/20">&lt;</Button>
-        <Button data-testid="move-down" onClick={() => move(0, 1)} size="sm" className="bg-white/10 text-white hover:bg-white/20">v</Button>
-        <Button data-testid="move-right" onClick={() => move(1, 0)} size="sm" className="bg-white/10 text-white hover:bg-white/20">&gt;</Button>
+        <Button 
+          data-testid="move-left" 
+          onPointerDown={(e) => { e.preventDefault(); move(-1, 0); }} 
+          size="lg" 
+          className="bg-white/10 border border-white/20 text-white hover:bg-white/20 h-14 w-14 rounded-xl active:scale-95"
+        >
+          <ArrowLeft className="w-8 h-8" />
+        </Button>
+        <Button 
+          data-testid="move-down" 
+          onPointerDown={(e) => { e.preventDefault(); move(0, 1); }} 
+          size="lg" 
+          className="bg-white/10 border border-white/20 text-white hover:bg-white/20 h-14 w-14 rounded-xl active:scale-95"
+        >
+          <ArrowDown className="w-8 h-8" />
+        </Button>
+        <Button 
+          data-testid="move-right" 
+          onPointerDown={(e) => { e.preventDefault(); move(1, 0); }} 
+          size="lg" 
+          className="bg-white/10 border border-white/20 text-white hover:bg-white/20 h-14 w-14 rounded-xl active:scale-95"
+        >
+          <ArrowRight className="w-8 h-8" />
+        </Button>
       </div>
 
       <p className="text-center text-blue-200 text-sm mt-4">

@@ -2,27 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-const MultiplierPains = ({ onSubmit }) => {
+const MultiplierPains = ({ onSubmit, isMultiplayer, initialTimeLeft = 30 }) => {
   const [breads, setBreads] = useState(5);
   const [clicks, setClicks] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(20);
+  const [timeLeft, setTimeLeft] = useState(initialTimeLeft);
   const [multiplier, setMultiplier] = useState(1);
+  const [gameActive, setGameActive] = useState(true);
 
   useEffect(() => {
-    if (timeLeft > 0) {
+    if (timeLeft > 0 && gameActive) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
-    } else {
-      onSubmit({ matches: Math.floor(breads / 10) });
+    } else if (timeLeft === 0 && gameActive) {
+      setGameActive(false);
+      if (onSubmit) {
+        // e.g., 5 breads = 50 pts, 100 breads = 1000 pts
+        if (isMultiplayer) onSubmit(null, true, breads * 10);
+        else onSubmit({ matches: Math.floor(breads / 10) });
+      }
     }
-  }, [timeLeft]);
+  }, [timeLeft, gameActive, onSubmit, isMultiplayer, breads]);
 
   const handleClick = () => {
+    if (!gameActive) return;
+    
     setClicks(clicks + 1);
-    setBreads(breads + multiplier);
+    setBreads(prev => prev + multiplier);
     
     if (clicks > 0 && clicks % 10 === 0) {
-      setMultiplier(multiplier + 1);
+      setMultiplier(prev => prev + 1);
     }
   };
 

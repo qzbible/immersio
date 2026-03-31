@@ -121,6 +121,8 @@ class DuoMatchRequest(BaseModel):
     mode: str = "friend"
     theme: Optional[str] = None
     friend_code: Optional[str] = None
+    difficulty: Optional[str] = "moyen"
+    num_modes: Optional[int] = 1
 
 
 class CreateGroupSessionRequest(BaseModel):

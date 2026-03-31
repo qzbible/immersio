@@ -8,17 +8,23 @@ import { Timer } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const ChronoVersets = ({ onSubmit }) => {
-  const [gameData, setGameData] = useState(null);
+const ChronoVersets = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
+  const [gameData, setGameData] = useState(initialGameData || null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [timeLeft, setTimeLeft] = useState(30);
-  const [loading, setLoading] = useState(true);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
+  const [loading, setLoading] = useState(!initialGameData);
 
   useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   useEffect(() => {
     if (!loading && timeLeft > 0) {
@@ -45,15 +51,24 @@ const ChronoVersets = ({ onSubmit }) => {
   };
 
   const handleNext = () => {
+    const isCorrect = currentAnswer.trim().toLowerCase() === gameData.verses[currentIndex].missing.toLowerCase();
     const newAnswers = { ...answers, [`q_${currentIndex}`]: currentAnswer };
     setAnswers(newAnswers);
+    
+    const pointsGained = isCorrect ? Math.max(10, 100 - (30 - timeLeft) * 2) : 0;
+    const newTotalPoints = accumulatedPoints + pointsGained;
+    setAccumulatedPoints(newTotalPoints);
+    
     setCurrentAnswer('');
     setTimeLeft(30);
     
     if (currentIndex < gameData.verses.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      onSubmit(newAnswers);
+      if (onSubmit) {
+         if (isMultiplayer) onSubmit(newAnswers, true, newTotalPoints);
+         else onSubmit(newAnswers);
+      }
     }
   };
 

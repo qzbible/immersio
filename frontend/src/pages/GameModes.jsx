@@ -5,7 +5,6 @@ import axios from 'axios';
 import { useTranslation } from '@/hooks/useTranslation';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Play, Lock, Clock, Trophy, Eye } from 'lucide-react';
 
@@ -56,7 +55,7 @@ const GameModes = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-white text-lg">{t('common.loading')}</p>
@@ -66,112 +65,99 @@ const GameModes = () => {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #312E81 50%, #1E3A8A 100%)' }}>
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-400 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400 rounded-full blur-3xl"></div>
-      </div>
-
-      <div className="relative z-10 container mx-auto px-4 py-8">
+    <div className="min-h-screen pb-24">
+      {/* Header */}
+      <div className="flex justify-between items-center p-4 md:px-8 mb-4">
         <Button
-          data-testid="back-to-dashboard"
           onClick={() => navigate('/dashboard')}
-          variant="outline"
-          className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20 mb-6"
+          variant="ghost"
+          className="text-white hover:bg-white/10"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="w-5 h-5 mr-2" />
           {t('common.back')}
         </Button>
+        <LanguageSwitcher />
+      </div>
 
+      <div className="container mx-auto px-4 md:px-8">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3" style={{ fontFamily: 'Fraunces, serif' }}>
+          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight" style={{ fontFamily: 'Fraunces, serif' }}>
             {t('games.title')}
           </h1>
           <p className="text-lg text-blue-200" style={{ fontFamily: 'Manrope, sans-serif' }}>
             {t('games.subtitle')}
           </p>
-          
-          <div className="flex flex-wrap gap-3 mt-6">
-            <Button data-testid="nav-tournaments" onClick={() => navigate('/tournaments')} className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white hover:opacity-90">
-              <Trophy className="w-4 h-4 mr-2" /> {t('games.tournaments')}
-            </Button>
-            <Button data-testid="nav-spectator" onClick={() => navigate('/spectate')} className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90">
-              <Eye className="w-4 h-4 mr-2" /> {t('games.spectator')}
-            </Button>
-            <LanguageSwitcher />
-          </div>
         </motion.div>
 
-        <Tabs defaultValue="all" className="mb-8" onValueChange={setSelectedCategory}>
-          <TabsList className="bg-white/10 backdrop-blur-md border border-white/20">
-            <TabsTrigger value="all" className="data-[state=active]:bg-white/20">{t('games.all')}</TabsTrigger>
-            <TabsTrigger value="Quiz et Tests" className="data-[state=active]:bg-white/20">{t('games.quiz')}</TabsTrigger>
-            <TabsTrigger value="Jeux de Mots" className="data-[state=active]:bg-white/20">{t('games.words')}</TabsTrigger>
-            <TabsTrigger value="Rapidité" className="data-[state=active]:bg-white/20">{t('games.speed')}</TabsTrigger>
-            <TabsTrigger value="Logique" className="data-[state=active]:bg-white/20">{t('games.logic')}</TabsTrigger>
-            <TabsTrigger value="Défis Flash" className="data-[state=active]:bg-white/20">{t('games.flash')}</TabsTrigger>
+        <Tabs defaultValue="all" className="mb-10" onValueChange={setSelectedCategory}>
+          <TabsList className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-full p-1 h-auto flex-wrap justify-start">
+            <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.all')}</TabsTrigger>
+            <TabsTrigger value="Quiz et Tests" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.quiz')}</TabsTrigger>
+            <TabsTrigger value="Jeux de Mots" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.words')}</TabsTrigger>
+            <TabsTrigger value="Rapidité" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.speed')}</TabsTrigger>
+            <TabsTrigger value="Logique" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.logic')}</TabsTrigger>
+            <TabsTrigger value="Défis Flash" className="rounded-full data-[state=active]:bg-white/20 data-[state=active]:text-yellow-400">{t('games.flash')}</TabsTrigger>
           </TabsList>
         </Tabs>
 
+        {/* 3D Glassmorphic Cards Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredModes.map((mode, index) => (
             <motion.div
               key={mode.mode_id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              data-testid={`game-mode-${mode.mode_id}`}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: index * 0.05, type: 'spring', stiffness: 200 }}
+              className="group"
             >
-              <Card className={`p-6 bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all h-full flex flex-col ${
-                !mode.available ? 'opacity-60' : 'cursor-pointer'
+              <div 
+                onClick={() => mode.available && startGame(mode.mode_id)}
+                className={`relative h-[380px] rounded-3xl overflow-hidden transition-all duration-500 transform lg:hover:-translate-y-4 lg:hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] ${
+                !mode.available ? 'opacity-60 grayscale' : 'cursor-pointer lg:hover:scale-[1.03]'
               }`}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`text-4xl w-14 h-14 rounded-xl bg-gradient-to-br ${mode.color} flex items-center justify-center`}>
-                    {mode.icon}
+                {/* Background colored gradient */}
+                <div className={`absolute inset-0 bg-gradient-to-b ${mode.color || 'from-blue-600 to-indigo-900'} opacity-70 group-hover:opacity-90 transition-opacity duration-300`}></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0f24] via-[#0a0f24]/80 to-transparent"></div>
+                
+                {/* Content */}
+                <div className="absolute inset-0 p-6 flex flex-col">
+                  <div className="flex justify-between items-start mb-auto">
+                    <div className="w-14 h-14 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl flex items-center justify-center text-3xl shadow-lg">
+                      {mode.icon}
+                    </div>
+                    {!mode.available && <Lock className="w-6 h-6 text-white/50" />}
                   </div>
-                  {!mode.available && (
-                    <Lock className="w-5 h-5 text-yellow-400" />
-                  )}
+                  
+                  <div className="mt-auto transform transition-transform duration-300 lg:group-hover:-translate-y-2">
+                    <h3 className="text-2xl font-black text-white mb-2 leading-tight drop-shadow-md" style={{ fontFamily: 'Fraunces, serif' }}>
+                      {mode.name}
+                    </h3>
+                    
+                    <p className="text-sm text-blue-200/90 line-clamp-3 mb-4 font-medium">
+                      {mode.description}
+                    </p>
+
+                    <div className="flex items-center gap-3 text-xs font-bold font-mono text-white/80 mb-4 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-300">
+                      <span className="bg-white/20 px-2 py-1 rounded-md backdrop-blur-sm border border-white/10">
+                        {mode.difficulty || 'Moyen'}
+                      </span>
+                      <span className="flex items-center gap-1 bg-white/20 px-2 py-1 rounded-md backdrop-blur-sm border border-white/10">
+                        <Clock className="w-3 h-3" /> {mode.duration_minutes} min
+                      </span>
+                    </div>
+
+                    <div className="w-full bg-white text-black font-black text-center py-3 rounded-xl uppercase tracking-widest text-sm shadow-[0_0_20px_rgba(255,255,255,0.3)] lg:group-hover:shadow-[0_0_30px_rgba(255,255,255,0.6)] transition-shadow">
+                      {mode.available ? (
+                        <span className="flex items-center justify-center gap-2"><Play className="w-4 h-4" /> JOUER</span>
+                      ) : 'BIENTÔT DISPONIBLE'}
+                    </div>
+                  </div>
                 </div>
-
-                <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                  {mode.name}
-                </h3>
-
-                <p className="text-sm text-blue-200 mb-4 flex-grow">
-                  {mode.description}
-                </p>
-
-                <div className="flex items-center justify-between text-xs text-blue-300 mb-4">
-                  <span className="px-2 py-1 rounded-full bg-white/10">
-                    {mode.difficulty}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {mode.duration_minutes} min
-                  </span>
-                </div>
-
-                <Button
-                  onClick={() => mode.available && startGame(mode.mode_id)}
-                  disabled={!mode.available}
-                  className={`w-full bg-gradient-to-r ${mode.color} text-white hover:opacity-90`}
-                  data-testid={`play-${mode.mode_id}`}
-                >
-                  {mode.available ? (
-                    <>
-                      <Play className="w-4 h-4 mr-2" />
-                      Jouer
-                    </>
-                  ) : (
-                    'Bientôt disponible'
-                  )}
-                </Button>
-              </Card>
+              </div>
             </motion.div>
           ))}
         </div>

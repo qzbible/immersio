@@ -5,16 +5,22 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const MemoryBiblique = ({ onSubmit }) => {
-  const [gameData, setGameData] = useState(null);
+const MemoryBiblique = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
+  const [gameData, setGameData] = useState(initialGameData || null);
   const [flippedCards, setFlippedCards] = useState([]);
   const [matchedCards, setMatchedCards] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
+  const [loading, setLoading] = useState(!initialGameData);
   const [moves, setMoves] = useState(0);
 
   useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   useEffect(() => {
     if (flippedCards.length === 2) {
@@ -23,12 +29,15 @@ const MemoryBiblique = ({ onSubmit }) => {
   }, [flippedCards]);
 
   useEffect(() => {
-    if (matchedCards.length === gameData?.cards.length) {
+    if (gameData && matchedCards.length === gameData.cards.length) {
       setTimeout(() => {
-        onSubmit({ matches: matchedCards.length / 2 });
+        if (onSubmit) {
+          if (isMultiplayer) onSubmit(null, true, accumulatedPoints);
+          else onSubmit({ matches: matchedCards.length / 2 });
+        }
       }, 1000);
     }
-  }, [matchedCards]);
+  }, [matchedCards, gameData, isMultiplayer, accumulatedPoints, onSubmit]);
 
   const fetchGameData = async () => {
     try {
@@ -60,6 +69,14 @@ const MemoryBiblique = ({ onSubmit }) => {
 
     if (card1.symbol === card2.symbol) {
       setMatchedCards([...matchedCards, first, second]);
+      
+      const newPoints = accumulatedPoints + 100;
+      setAccumulatedPoints(newPoints);
+      
+      if (isMultiplayer && onSubmit) {
+        // Emit progress if we want, currently handled on round end, but let's accumulate locally
+      }
+      
       setFlippedCards([]);
     } else {
       setTimeout(() => {

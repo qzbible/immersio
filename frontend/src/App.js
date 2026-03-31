@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 import '@/App.css';
 
+import MainLayout from '@/layouts/MainLayout';
 import Landing from '@/pages/Landing';
 import AuthCallback from '@/pages/AuthCallback';
 import Dashboard from '@/pages/Dashboard';
@@ -85,10 +86,10 @@ function AppRouter() {
       <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
       
       {/* Protected Routes */}
-      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />
       <Route path="/campaign" element={<ProtectedRoute><Campaign /></ProtectedRoute>} />
       <Route path="/quiz" element={<ProtectedRoute><QuizGame /></ProtectedRoute>} />
-      <Route path="/games" element={<ProtectedRoute><GameModes /></ProtectedRoute>} />
+      <Route path="/games" element={<ProtectedRoute><MainLayout><GameModes /></MainLayout></ProtectedRoute>} />
       <Route path="/play/:modeId" element={<ProtectedRoute><GamePlay /></ProtectedRoute>} />
       <Route path="/duo" element={<ProtectedRoute><ModeDuo /></ProtectedRoute>} />
       <Route path="/duo/play/:matchId" element={<ProtectedRoute><DuoPlay /></ProtectedRoute>} />
@@ -97,10 +98,10 @@ function AppRouter() {
       <Route path="/group" element={<ProtectedRoute><ModeGroupe /></ProtectedRoute>} />
       <Route path="/group/host/:sessionId" element={<ProtectedRoute><GroupHost /></ProtectedRoute>} />
       <Route path="/group/play/:sessionId" element={<ProtectedRoute><GroupPlay /></ProtectedRoute>} />
-      <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
-      <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
-      <Route path="/tournaments" element={<ProtectedRoute><Tournaments /></ProtectedRoute>} />
-      <Route path="/spectate" element={<ProtectedRoute><SpectatorList /></ProtectedRoute>} />
+      <Route path="/leaderboard" element={<ProtectedRoute><MainLayout><Leaderboard /></MainLayout></ProtectedRoute>} />
+      <Route path="/achievements" element={<ProtectedRoute><MainLayout><Achievements /></MainLayout></ProtectedRoute>} />
+      <Route path="/tournaments" element={<ProtectedRoute><MainLayout><Tournaments /></MainLayout></ProtectedRoute>} />
+      <Route path="/spectate" element={<ProtectedRoute><MainLayout><SpectatorList /></MainLayout></ProtectedRoute>} />
       <Route path="/spectate/:matchId" element={<ProtectedRoute><SpectatorView /></ProtectedRoute>} />
       <Route path="/premium" element={<ProtectedRoute><Premium /></ProtectedRoute>} />
       <Route path="/premium-success" element={<ProtectedRoute><PremiumSuccess /></ProtectedRoute>} />

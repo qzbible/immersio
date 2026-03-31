@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-const LaManne = ({ onSubmit }) => {
+const LaManne = ({ onSubmit, isMultiplayer, initialTimeLeft = 30 }) => {
   const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(initialTimeLeft);
   const [fallingItems, setFallingItems] = useState([]);
   const [gameActive, setGameActive] = useState(true);
 
@@ -15,7 +15,10 @@ const LaManne = ({ onSubmit }) => {
       return () => clearTimeout(timer);
     } else if (timeLeft === 0) {
       setGameActive(false);
-      onSubmit({ matches: score });
+      if (onSubmit) {
+        if (isMultiplayer) onSubmit(null, true, Math.max(0, score * 50)); // e.g. 50 points per bread
+        else onSubmit({ matches: score });
+      }
     }
   }, [timeLeft, gameActive]);
 
@@ -63,9 +66,12 @@ const LaManne = ({ onSubmit }) => {
               initial={{ y: -50, x: `${item.x}%` }}
               animate={{ y: 400 }}
               transition={{ duration: 3, ease: 'linear' }}
-              className="absolute cursor-pointer text-4xl"
-              onClick={() => handleCatch(item)}
-              style={{ left: `${item.x}%` }}
+              className="absolute cursor-pointer text-5xl select-none touch-none hover:scale-110 active:scale-90 transition-transform"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handleCatch(item);
+              }}
+              style={{ left: `${item.x}%`, zIndex: 10 }}
             >
               {item.emoji}
             </motion.div>

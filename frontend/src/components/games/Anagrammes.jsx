@@ -6,16 +6,23 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const Anagrammes = ({ onSubmit }) => {
-  const [gameData, setGameData] = useState(null);
+const Anagrammes = ({ onSubmit, gameData: initialGameData, isMultiplayer }) => {
+  const [gameData, setGameData] = useState(initialGameData || null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [currentAnswer, setCurrentAnswer] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [accumulatedPoints, setAccumulatedPoints] = useState(0);
+  const [loading, setLoading] = useState(!initialGameData);
+  const [isFinished, setIsFinished] = useState(false);
 
   useEffect(() => {
-    fetchGameData();
-  }, []);
+    if (!initialGameData && !isMultiplayer) {
+      fetchGameData();
+    } else if (initialGameData) {
+      setGameData(initialGameData);
+      setLoading(false);
+    }
+  }, [initialGameData, isMultiplayer]);
 
   const fetchGameData = async () => {
     try {
@@ -33,14 +40,30 @@ const Anagrammes = ({ onSubmit }) => {
   };
 
   const handleNext = () => {
-    const newAnswers = { ...answers, [`q_${currentIndex}`]: currentAnswer };
+    if (isFinished) return;
+    
+    const isCorrect = currentAnswer.trim().toUpperCase() === currentAnagram.answer.trim().toUpperCase();
+    const newAnswers = { ...answers, [`q_${currentIndex}`]: currentAnswer.trim().toUpperCase() };
     setAnswers(newAnswers);
+    
+    const pointsGained = isCorrect ? 100 : 0;
+    const newTotalPoints = accumulatedPoints + pointsGained;
+    setAccumulatedPoints(newTotalPoints);
+    
     setCurrentAnswer('');
     
     if (currentIndex < gameData.anagrams.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      onSubmit(newAnswers);
+      // Game finished!
+      setIsFinished(true);
+      if (onSubmit) {
+        if (isMultiplayer) {
+          onSubmit(newAnswers, true, newTotalPoints); // Emit the sum immediately
+        } else {
+          onSubmit(newAnswers);
+        }
+      }
     }
   };
 
@@ -58,10 +81,10 @@ const Anagrammes = ({ onSubmit }) => {
         </span>
       </div>
 
-      <Card className="p-8 bg-white/10 backdrop-blur-md border-white/20 mb-6 text-center">
+      <Card className="p-8 bg-white/10 backdrop-blur-md border-white/20 mb-6 text-center transition-all duration-300 transform">
         <p className="text-sm text-blue-200 mb-4">Reconstituez le nom du personnage</p>
         <p className="text-5xl font-bold text-yellow-400 tracking-widest mb-4">
-          {currentAnagram.scrambled}
+          {isFinished ? 'Bravo !' : currentAnagram.scrambled}
         </p>
       </Card>
 
