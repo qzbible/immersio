@@ -1,0 +1,4 @@
+---
+backend_app_hostname: dev-backend.immersio.dikotech.com
+front_app_hostname: dev.immersio.dikotech.com
+admin_app_hostname: dev-admin.immersio.dikotech.com

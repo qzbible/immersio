@@ -1,0 +1,14 @@
+---
+# Global vars
+traefik_network: traefik-public
+
+# DB settings
+# DB settings
+immersio_backend_db_host: "{{ vault_db_host }}"
+immersio_backend_db_name: "{{ vault_db_name }}"
+immersio_backend_db_user: "{{ vault_db_user }}"
+immersio_backend_db_password: "{{ vault_db_password }}"
+immersio_backend_db_port: "{{ vault_db_port }}"
+
+# Django settings
+immersio_backend_flask_secret_key: "{{ vault_flask_secret_key }}"
