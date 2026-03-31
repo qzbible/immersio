@@ -41,8 +41,8 @@
     group: "{{ ansible_user }}"
     mode: "0700"
   loop:
-    - { src: "flask.env.j2", dest: ".flask.env" }
-    - { src: "mongo.env.j2", dest: ".mongo.env" }
+    - { src: "flask-env.j2", dest: ".flask.env" }
+    - { src: "mongo-env.j2", dest: ".mongo.env" }
   register: env_files
 
 # This is a hack to use docker-compose to replace the env vars since swarm cannot do that

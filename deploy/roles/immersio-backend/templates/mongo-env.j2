@@ -1,0 +1,4 @@
+MONGO_URL=mongodb://{{ immersio_backend_db_user }}:{{ immersio_backend_db_password }}@db:27017/{{ immersio_backend_db_name }}?authSource=admin
+DB_NAME={{ immersio_backend_db_name }}
+
+JWT_SECRET_KEY={{ immersio_backend_flask_secret_key }}
