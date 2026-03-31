@@ -38,10 +38,17 @@ const GameModes = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/game-modes/categories`);
-      setCategories([{ name: 'Tous', count: response.data.reduce((sum, cat) => sum + cat.count, 0) }, ...response.data]);
+      const response = await axios.get(`${BACKEND_URL}/api/game-modes/categories`, {
+        withCredentials: true
+      });
+      const data = Array.isArray(response.data) ? response.data : [];
+      setCategories([{ 
+        name: 'Tous', 
+        count: data.reduce((sum, cat) => sum + (cat.count || 0), 0) 
+      }, ...data]);
     } catch (error) {
       console.error('Erreur chargement catégories:', error);
+      setCategories([{ name: 'Tous', count: 0 }]);
     }
   };
 

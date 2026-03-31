@@ -148,8 +148,10 @@ async def generate_game_data(mode_id: str, lang: str = "fr", difficulty: Optiona
         maze_data = generate_maze(15, 15)
         if db_questions:
             random.shuffle(db_questions)
-            return {**maze_data, "questions": db_questions[:10]}
-        questions = get_labyrinthe_questions(lang)
+            questions = db_questions[:10]
+        else:
+            questions = get_labyrinthe_questions(lang)
+        return {**maze_data, "questions": questions}
     elif mode_id == "brebis_perdue":
         return {"target": "sheep", "grid_size": 8}
         
