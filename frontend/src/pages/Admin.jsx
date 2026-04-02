@@ -178,7 +178,8 @@ export default function Admin() {
       if (lng) params.lang = lng;
       if (approved !== '') params.approved = approved === 'true';
       const res = await axios.get(`${BACKEND_URL}/api/admin/questions`, { params, withCredentials: true });
-      setSavedQuestions(res.data.questions);
+      const data = res.data.questions || res.data;
+      setSavedQuestions(Array.isArray(data) ? data : []);
     } catch {}
     setLoadingLib(false);
   };

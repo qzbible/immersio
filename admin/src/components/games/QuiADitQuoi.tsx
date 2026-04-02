@@ -6,7 +6,13 @@ import axios from 'axios';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
-const QuiADitQuoi = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const QuiADitQuoi = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [gameData, setGameData] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<any>({});
@@ -32,6 +38,7 @@ const QuiADitQuoi = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, m
   };
 
   const handleAnswer = (answer: string) => {
+    playClick?.();
     const updatedAnswers = { ...answers, [`q_${currentIndex}`]: answer };
     setAnswers(updatedAnswers);
     

@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/Card';
 import axios from 'axios';
+import GameQuestionOverlay from './GameQuestionOverlay';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
-const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const MotsCaches = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [gameData, setGameData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedCells, setSelectedCells] = useState<number[][]>([]);
@@ -13,6 +20,11 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
   const [foundCells, setFoundCells] = useState(new Set<string>());
   const [isDragging, setIsDragging] = useState(false);
   const [startCell, setStartCell] = useState<number[] | null>(null);
+
+  // Hybrid states
+  const [questionsPool, setQuestionsPool] = useState<any[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     fetchGameData();
@@ -22,7 +34,29 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
     if (gameData && foundWords.length === gameData.words.length) {
       setTimeout(() => onSubmit({ words_found: foundWords.length }), 1500);
     }
+    
+    // Trigger question every 3 words found
+    if (gameData && foundWords.length > 0 && foundWords.length % 3 === 0 && questionsPool.length > 0) {
+       // Only trigger if we haven't just shown one for this count
+       triggerQuestion();
+    }
   }, [foundWords, gameData, onSubmit]);
+
+  const triggerQuestion = () => {
+    if (currentQuestion || isPaused) return;
+    const randomIndex = Math.floor(Math.random() * questionsPool.length);
+    setCurrentQuestion(questionsPool[randomIndex]);
+    setIsPaused(true);
+  };
+
+  const handleAnswer = (correct: boolean) => {
+    if (correct) {
+      // Reward: Reveal a letter? No, let's just add to a virtual score for now
+      // Or maybe just show success and continue.
+    }
+    setCurrentQuestion(null);
+    setIsPaused(false);
+  };
 
   const fetchGameData = async () => {
     try {
@@ -32,6 +66,9 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
         { withCredentials: true }
       );
       setGameData(response.data.game_data);
+      if (response.data.game_data.questions) {
+        setQuestionsPool(response.data.game_data.questions);
+      }
     } catch (error) {
       console.error('Erreur:', error);
     } finally {
@@ -58,19 +95,20 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
   }, []);
 
   const handleMouseDown = (row: number, col: number) => {
+    if (isPaused) return;
     setIsDragging(true);
     setStartCell([row, col]);
     setSelectedCells([[row, col]]);
   };
 
   const handleMouseEnter = (row: number, col: number) => {
-    if (!isDragging || !startCell) return;
+    if (!isDragging || !startCell || isPaused) return;
     const cells = getCellsInLine(startCell, [row, col]);
     if (cells.length > 0) setSelectedCells(cells);
   };
 
   const handleMouseUp = () => {
-    if (!isDragging || !gameData) { setIsDragging(false); return; }
+    if (!isDragging || !gameData || isPaused) { setIsDragging(false); return; }
     setIsDragging(false);
 
     const selectedWord = selectedCells.map(([r, c]) => gameData.grid[r][c]).join('');
@@ -98,7 +136,7 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
   const isFound = (r: number, c: number) => foundCells.has(`${r}-${c}`);
 
   return (
-    <div className="max-w-3xl mx-auto select-none">
+    <div className="max-w-3xl mx-auto select-none relative">
       <div className="mb-6 text-center">
         <span className="text-admin-yellow font-semibold text-lg">
           Mots trouvés : {foundWords.length}/{gameData.words.length}
@@ -107,7 +145,7 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
 
       <Card className="p-4 sm:p-6 bg-white/5 backdrop-blur-md border-white/10 mb-6 ring-1 ring-white/10 shadow-2xl">
         <div
-          className="grid gap-1 mx-auto"
+          className={`grid gap-1 mx-auto transition-opacity ${isPaused ? 'opacity-20 pointer-events-none' : ''}`}
           style={{ gridTemplateColumns: `repeat(${gameData.grid_size}, 1fr)`, maxWidth: '500px' }}
           onMouseLeave={() => { if (isDragging) handleMouseUp(); }}
         >
@@ -120,7 +158,7 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
                 onMouseUp={handleMouseUp}
                 onTouchStart={() => handleMouseDown(ri, ci)}
                 onTouchEnd={handleMouseUp}
-                whileHover={{ scale: 1.1 }}
+                whileHover={{ scale: isPaused ? 1 : 1.1 }}
                 className={`aspect-square flex items-center justify-center text-sm sm:text-lg font-bold cursor-pointer rounded-md transition-all duration-200 shadow-sm
                   ${isFound(ri, ci) ? 'bg-emerald-500 text-white shadow-emerald-500/20' 
                     : isSelected(ri, ci) ? 'bg-admin-yellow text-admin-bg' 
@@ -148,6 +186,18 @@ const MotsCaches = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mo
           </motion.span>
         ))}
       </div>
+
+      <AnimatePresence>
+        {currentQuestion && (
+          <GameQuestionOverlay 
+            question={currentQuestion} 
+            onAnswer={handleAnswer} 
+            playSuccess={playSuccess}
+            playFail={playFail}
+            playClick={playClick}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

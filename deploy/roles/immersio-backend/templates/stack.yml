@@ -11,6 +11,9 @@ services:
     networks:
       - immersio
       - "{{ traefik_network }}"
+    volumes:
+      - static_data:/app/static
+      - media:/app/media
     
     deploy:
       mode: replicated
@@ -53,7 +56,8 @@ services:
       - MONGO_URL=mongodb://db:27017/
       - DB_NAME=immersio_db
     volumes:
-      - media:/app/uploads 
+      - media:/app/media
+      - static_data:/app/static
     deploy:
       mode: replicated
       replicas: 1
@@ -93,6 +97,7 @@ services:
 volumes: 
   media:
   db_data:
+  static_data:
 
 networks:
   immersio:

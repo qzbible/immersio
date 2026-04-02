@@ -15,6 +15,9 @@ import random
 import string
 import logging
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from database import db, client
 from models import User, UserSession, GameStartRequest, GameSubmitRequest, CheckoutRequest, DuoMatchRequest, CreateGroupSessionRequest, JoinGroupRequest
@@ -29,6 +32,8 @@ from i18n_content import (
 from routes.auth_routes import router as auth_router
 from routes.games_routes import router as games_router
 from routes.admin_routes import router as admin_router
+from routes.org_routes import router as org_router
+from org_utils import create_org_logic
 
 # ── App & Socket.IO setup ────────────────────────────────────────────
 sio = socketio.AsyncServer(
@@ -51,6 +56,7 @@ api_router = __import__('fastapi', fromlist=['APIRouter']).APIRouter(prefix="/ap
 # ── Include modular route files ──────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(games_router)
+app.include_router(org_router)
 
 # ── Badges & Achievements ───────────────────────────────────────────
 @api_router.get("/badges")
@@ -122,17 +128,29 @@ async def create_checkout_session(request: Request, checkout_req: CheckoutReques
     if not stripe.api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
     
-    prices = {"1_hour": 99, "24_hours": 299, "weekly": 499}
+    prices = {
+        "1_hour": 99, "24_hours": 299, "weekly": 499,
+        "silver": 1999, "gold": 4999
+    }
     amount = prices.get(checkout_req.package_type, 99)
     
+    metadata = {
+        "user_id": user.user_id, 
+        "package_type": checkout_req.package_type
+    }
+    if checkout_req.org_name:
+        metadata["org_name"] = checkout_req.org_name
+    if checkout_req.plan:
+        metadata["plan"] = checkout_req.plan
+
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
-            line_items=[{"price_data": {"currency": "eur", "product_data": {"name": f"BibleQuest Premium - {checkout_req.package_type}"}, "unit_amount": amount}, "quantity": 1}],
+            line_items=[{"price_data": {"currency": "eur", "product_data": {"name": f"BibleQuest - {checkout_req.package_type.capitalize()}"}, "unit_amount": amount}, "quantity": 1}],
             mode="payment",
             success_url=checkout_req.success_url + "?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=checkout_req.cancel_url,
-            metadata={"user_id": user.user_id, "package_type": checkout_req.package_type}
+            metadata=metadata
         )
         return {"checkout_url": session.url, "session_id": session.id}
     except Exception as e:
@@ -152,10 +170,19 @@ async def verify_payment(request: Request, authorization: Optional[str] = Header
         if session.payment_status == "paid":
             user_id = session.metadata.get("user_id")
             package_type = session.metadata.get("package_type")
+            org_name = session.metadata.get("org_name")
+            plan = session.metadata.get("plan")
+
+            if org_name and plan:
+                # This is an organization creation via Stripe
+                await create_org_logic(user_id, org_name, plan)
+                return {"status": "success", "type": "organization", "plan": plan}
+
+            # Individual premium logic
             hours = {"1_hour": 1, "24_hours": 24, "weekly": 168}.get(package_type, 1)
             expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
             await db.users.update_one({"user_id": user_id}, {"$set": {"is_premium": True, "premium_expires_at": expires_at.isoformat()}})
-            return {"status": "success", "premium_until": expires_at.isoformat()}
+            return {"status": "success", "type": "individual", "premium_until": expires_at.isoformat()}
         return {"status": "pending"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1005,5 +1032,21 @@ async def seed_initial_data():
         ]
         await db.achievements.insert_many(achievements)
         logger.info(f"Seeded {len(achievements)} achievements")
+
+    # ── RBAC Migration ───────────────────────────────────────────────
+    # Patch game modes and questions created before RBAC (missing owner_id)
+    m_patched = await db.game_modes.update_many(
+        {"owner_id": {"$exists": False}},
+        {"$set": {"owner_id": "system", "visibility": "public"}}
+    )
+    q_patched = await db.questions.update_many(
+        {"owner_id": {"$exists": False}},
+        {"$set": {"owner_id": "system", "visibility": "public"}}
+    )
+    if m_patched.modified_count or q_patched.modified_count:
+        logger.info(
+            f"RBAC migration: {m_patched.modified_count} modes + "
+            f"{q_patched.modified_count} questions → owner_id=system"
+        )
 
 app = socket_app

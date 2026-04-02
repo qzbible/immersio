@@ -8,7 +8,13 @@ import { Timer } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
-const ChronoVersets = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const ChronoVersets = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [gameData, setGameData] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<any>({});
@@ -45,6 +51,7 @@ const ChronoVersets = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void,
   };
 
   const handleNext = () => {
+    playClick?.();
     const newAnswers = { ...answers, [`q_${currentIndex}`]: currentAnswer };
     setAnswers(newAnswers);
     setCurrentAnswer('');

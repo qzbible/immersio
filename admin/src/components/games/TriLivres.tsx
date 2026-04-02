@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import axios from 'axios';
+import GameQuestionOverlay from './GameQuestionOverlay';
 
-const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+
+const TriLivres = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [books] = useState([
     { name: 'Genèse', testament: 'Ancien' },
     { name: 'Exode', testament: 'Ancien' },
@@ -22,12 +33,38 @@ const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mod
   const [nouveau, setNouveau] = useState<any[]>([]);
   const [draggedBook, setDraggedBook] = useState<any>(null);
 
+  // Hybrid states
+  const [questionsPool, setQuestionsPool] = useState<any[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [totalSorted, setTotalSorted] = useState(0);
+
+  useEffect(() => {
+    fetchGameData();
+  }, [modeId]);
+
+  const fetchGameData = async () => {
+    try {
+      const response = await axios.post(
+        `${BACKEND_URL}/api/games/start`,
+        { mode_id: modeId },
+        { withCredentials: true }
+      );
+      if (response.data.game_data.questions) {
+        setQuestionsPool(response.data.game_data.questions);
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+    }
+  };
+
   const handleDragStart = (book: any) => {
+    if (isPaused) return;
     setDraggedBook(book);
   };
 
   const handleDrop = (testament: string) => {
-    if (!draggedBook) return;
+    if (!draggedBook || isPaused) return;
 
     if (testament === 'Ancien') {
       setAncien([...ancien, draggedBook]);
@@ -35,11 +72,19 @@ const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mod
       setNouveau([...nouveau, draggedBook]);
     }
 
+    const newTotalSorted = totalSorted + 1;
+    setTotalSorted(newTotalSorted);
+
     const remaining = shuffledBooks.filter(b => b !== draggedBook);
     setShuffledBooks(remaining);
     
     const currentDragged = draggedBook;
     setDraggedBook(null);
+
+    // Trigger question every 5 books
+    if (newTotalSorted > 0 && newTotalSorted % 5 === 0 && questionsPool.length > 0) {
+      triggerQuestion();
+    }
 
     if (remaining.length === 0) {
       setTimeout(() => {
@@ -54,19 +99,30 @@ const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mod
     }
   };
 
+  const triggerQuestion = () => {
+    const randomIndex = Math.floor(Math.random() * questionsPool.length);
+    setCurrentQuestion(questionsPool[randomIndex]);
+    setIsPaused(true);
+  };
+
+  const handleAnswer = (correct: boolean) => {
+    setCurrentQuestion(null);
+    setIsPaused(false);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto relative">
       <div className="mb-8">
         <div className="text-center mb-6">
             <h2 className="text-3xl font-bold text-white mb-2">Tri de Livres</h2>
             <p className="text-white/40">Glissez chaque livre dans le bon testament</p>
         </div>
         
-        <div className="flex flex-wrap gap-3 justify-center min-h-[100px] p-6 rounded-2xl bg-white/5 border border-white/5 shadow-inner">
+        <div className={`flex flex-wrap gap-3 justify-center min-h-[100px] p-6 rounded-2xl bg-white/5 border border-white/5 shadow-inner transition-opacity ${isPaused ? 'opacity-20 pointer-events-none' : ''}`}>
           {shuffledBooks.map((book, idx) => (
             <div
               key={idx}
-              draggable
+              draggable={!isPaused}
               onDragStart={() => handleDragStart(book)}
               className="px-6 py-3 bg-admin-accent text-white font-bold rounded-xl cursor-move hover:scale-105 active:scale-95 transition-all shadow-lg shadow-admin-accent/20"
             >
@@ -79,7 +135,7 @@ const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mod
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className={`grid md:grid-cols-2 gap-8 transition-opacity ${isPaused ? 'opacity-20 pointer-events-none' : ''}`}>
         <Card
           onDragOver={(e: any) => e.preventDefault()}
           onDrop={() => handleDrop('Ancien')}
@@ -134,6 +190,18 @@ const TriLivres = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mod
           </div>
         </Card>
       </div>
+
+      <AnimatePresence>
+        {currentQuestion && (
+          <GameQuestionOverlay 
+            question={currentQuestion} 
+            onAnswer={handleAnswer} 
+            playSuccess={playSuccess}
+            playFail={playFail}
+            playClick={playClick}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

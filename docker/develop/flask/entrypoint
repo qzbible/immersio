@@ -8,8 +8,8 @@ set -o nounset
 echo "Starting Flask application setup... "
 # flask db downgrade 1d679b98d407
 # Run database migrations
-echo "Running database migrations..."
-# flask db upgrade
+echo "Running database initialization and seeding..."
+python3 scripts/seed_db.py || echo "Warning: Seeding failed, but continuing..."
 
 echo "Flask application starting..."
 

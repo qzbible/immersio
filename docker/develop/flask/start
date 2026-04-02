@@ -6,8 +6,8 @@ set -o nounset
 
 echo "Starting Immersio API setup..."
 
-# Run database migrations if needed
-# echo "Running database migrations..."
+echo "Running database initialization and seeding..."
+python3 scripts/seed_db.py || echo "Warning: Seeding failed, but continuing..."
 
 echo "Immersio API starting..."
 

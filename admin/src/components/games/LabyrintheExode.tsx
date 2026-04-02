@@ -1,29 +1,61 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import axios from 'axios';
+import GameQuestionOverlay from './GameQuestionOverlay';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
-const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const LabyrintheExode = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [gameData, setGameData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [playerPos, setPlayerPos] = useState<[number, number] | null>(null);
   const [path, setPath] = useState(new Set<string>());
   const [timeLeft, setTimeLeft] = useState(90);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [showQuestion, setShowQuestion] = useState(false);
   const [questionsCorrect, setQuestionsCorrect] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [steps, setSteps] = useState(0);
+
+  // Hybrid states
+  const [questionsPool, setQuestionsPool] = useState<any[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     fetchGameData();
   }, [modeId]);
 
+  const fetchGameData = async () => {
+    try {
+      const response = await axios.post(
+        `${BACKEND_URL}/api/games/start`,
+        { mode_id: modeId },
+        { withCredentials: true }
+      );
+      const data = response.data.game_data;
+      setGameData(data);
+      setPlayerPos(data.start);
+      setPath(new Set([`${data.start[0]}-${data.start[1]}`]));
+      
+      if (data.questions) {
+        setQuestionsPool(data.questions);
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!gameData || completed || showQuestion) return;
+    if (!gameData || completed || isPaused) return;
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -35,7 +67,7 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameData, completed, showQuestion]);
+  }, [gameData, completed, isPaused]);
 
   const handleFinish = useCallback((won: boolean) => {
     if (completed) return;
@@ -53,32 +85,27 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
     if (px === ex && py === ey) {
       handleFinish(true);
     }
-    // Show a question every 15 steps
-    if (steps > 0 && steps % 15 === 0 && !showQuestion && questionIndex < (gameData.questions?.length || 0)) {
-        setShowQuestion(true);
+    
+    // Trigger question every 10 steps
+    if (steps > 0 && steps % 10 === 0 && !isPaused && questionsPool.length > 0) {
+        triggerQuestion();
     }
-  }, [playerPos, gameData, steps, questionIndex, showQuestion, handleFinish]);
+  }, [playerPos, gameData, steps, isPaused, questionsPool, handleFinish]);
 
-  const fetchGameData = async () => {
-    try {
-      const response = await axios.post(
-        `${BACKEND_URL}/api/games/start`,
-        { mode_id: modeId },
-        { withCredentials: true }
-      );
-      const data = response.data.game_data;
-      setGameData(data);
-      setPlayerPos(data.start);
-      setPath(new Set([`${data.start[0]}-${data.start[1]}`]));
-    } catch (error) {
-      console.error('Erreur:', error);
-    } finally {
-      setLoading(false);
-    }
+  const triggerQuestion = () => {
+    const randomIndex = Math.floor(Math.random() * questionsPool.length);
+    setCurrentQuestion(questionsPool[randomIndex]);
+    setIsPaused(true);
+  };
+
+  const handleAnswer = (correct: boolean) => {
+    if (correct) setQuestionsCorrect(prev => prev + 1);
+    setCurrentQuestion(null);
+    setIsPaused(false);
   };
 
   const move = useCallback((dx: number, dy: number) => {
-    if (!gameData || completed || showQuestion) return;
+    if (!gameData || completed || isPaused) return;
     const [px, py] = playerPos!;
     const nx = px + dx;
     const ny = py + dy;
@@ -87,7 +114,7 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
     setPlayerPos([nx, ny]);
     setPath(prev => new Set([...prev, `${nx}-${ny}`]));
     setSteps(s => s + 1);
-  }, [gameData, playerPos, completed, showQuestion]);
+  }, [gameData, playerPos, completed, isPaused]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -104,13 +131,6 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
     return () => window.removeEventListener('keydown', handleKey);
   }, [move]);
 
-  const answerQuestion = (idx: number) => {
-    const q = gameData.questions[questionIndex];
-    if (idx === q.answer) setQuestionsCorrect(prev => prev + 1);
-    setQuestionIndex(prev => prev + 1);
-    setShowQuestion(false);
-  };
-
   if (loading || !gameData) {
     return <div className="text-center text-white p-12">Préparation de l'Exode...</div>;
   }
@@ -124,31 +144,8 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
           <h2 className="text-2xl font-bold text-white mb-2">
             {won ? 'Terre Promise Atteinte !' : 'Temps Épuisé...'}
           </h2>
-          <p className="text-blue-200 mb-2">Pas effectués : {steps} | Questions : {questionsCorrect}/{gameData.questions.length}</p>
+          <p className="text-blue-200 mb-2">Pas effectués : {steps} | Questions Correctes : {questionsCorrect}</p>
           <p className="text-admin-yellow font-bold">Temps restant : {timeLeft}s</p>
-        </Card>
-      </div>
-    );
-  }
-
-  if (showQuestion && questionIndex < gameData.questions.length) {
-    const q = gameData.questions[questionIndex];
-    return (
-      <div className="max-w-lg mx-auto">
-        <Card className="p-6 bg-admin-card border-white/10 shadow-2xl">
-          <h3 className="text-xl font-bold text-white mb-6 text-center">{q.text}</h3>
-          <div className="grid grid-cols-1 gap-3">
-            {q.options.map((opt: string, idx: number) => (
-              <Button
-                key={idx}
-                onClick={() => answerQuestion(idx)}
-                variant="outline"
-                className="justify-start p-4 hover:bg-admin-accent hover:text-white transition-all"
-              >
-                {opt}
-              </Button>
-            ))}
-          </div>
         </Card>
       </div>
     );
@@ -161,7 +158,7 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
   const startY = Math.max(0, Math.min(vpy - half, gameData.height - viewSize));
 
   return (
-    <div className="max-w-xl mx-auto">
+    <div className="max-w-xl mx-auto relative">
       <div className="flex items-center justify-between mb-4 bg-white/5 p-4 rounded-xl border border-white/5">
         <div className="flex flex-col">
             <span className="text-[10px] text-white/40 uppercase font-bold tracking-widest">Pas effectuées</span>
@@ -175,11 +172,11 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
         </div>
         <div className="flex flex-col items-end">
             <span className="text-[10px] text-white/40 uppercase font-bold tracking-widest">Questions</span>
-            <span className="text-emerald-400 font-bold">{questionsCorrect}/{gameData.questions.length}</span>
+            <span className="text-emerald-400 font-bold">{questionsCorrect}</span>
         </div>
       </div>
 
-      <Card className="p-2 bg-slate-900 border-white/10 mb-6 shadow-2xl relative">
+      <Card className={`p-2 bg-slate-900 border-white/10 mb-6 shadow-2xl relative transition-opacity ${isPaused ? 'opacity-20 pointer-events-none' : ''}`}>
         <div className="grid gap-1 mx-auto" style={{ gridTemplateColumns: `repeat(${viewSize}, 1fr)`, maxWidth: '100%' }}>
           {Array.from({ length: viewSize }, (_, vy) =>
             Array.from({ length: viewSize }, (_, vx) => {
@@ -215,7 +212,7 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
         </div>
       </Card>
 
-      <div className="grid grid-cols-3 gap-3 max-w-[200px] mx-auto">
+      <div className={`grid grid-cols-3 gap-3 max-w-[200px] mx-auto transition-opacity ${isPaused ? 'opacity-20 pointer-events-none' : ''}`}>
         <div />
         <Button onClick={() => move(0, -1)} variant="outline" className="w-14 h-14 p-0">↑</Button>
         <div />
@@ -227,6 +224,18 @@ const LabyrintheExode = ({ onSubmit, modeId }: { onSubmit: (answers: any) => voi
       <p className="text-center text-white/30 text-xs mt-6 font-medium">
         Utilisez les flèches ou ZQSD pour vous déplacer.
       </p>
+
+      <AnimatePresence>
+        {currentQuestion && (
+          <GameQuestionOverlay 
+            question={currentQuestion} 
+            onAnswer={handleAnswer} 
+            playSuccess={playSuccess}
+            playFail={playFail}
+            playClick={playClick}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

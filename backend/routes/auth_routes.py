@@ -17,7 +17,56 @@ import hashlib
 
 router = APIRouter(prefix="/api")
 
+async def send_email(to_email: str, subject: str, body: str):
+    """
+    Sends an email using SMTP settings from .env
+    """
+    smtp_host = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("EMAIL_PORT", 587))
+    smtp_user = os.getenv("EMAIL_HOST_USER")
+    smtp_pass = os.getenv("EMAIL_HOST_PASSWORD")
+    sender = os.getenv("MAIL_SENDER", smtp_user)
+    use_tls = os.getenv("EMAIL_USE_TLS", "True") == "True"
 
+    if not smtp_user or not smtp_pass:
+        print(f"⚠️ SMTP not configured. Skipping email to {to_email}")
+        return False
+
+    message = MIMEMultipart()
+    message["From"] = sender
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain"))
+
+    try:
+        # Fix for [SSL: CERTIFICATE_VERIFY_FAILED] on some systems (macOS)
+        context = ssl.create_default_context(cafile=certifi.where())
+        
+        if use_tls:
+            await aiosmtplib.send(
+                message,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_pass,
+                start_tls=True,
+                tls_context=context,
+            )
+        else:
+            await aiosmtplib.send(
+                message,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_pass,
+                use_tls=True,
+                tls_context=context,
+            )
+        print(f"✅ Email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send email to {to_email}: {e}")
+        return False
 @router.post("/auth/session")
 async def create_session(session_id: str, response: Response):
     async with httpx.AsyncClient() as client:
@@ -62,12 +111,19 @@ async def get_me(request: Request, authorization: Optional[str] = Header(None)):
     user = await get_current_user(request, authorization)
     if user.premium_expires_at:
         premium_expires = user.premium_expires_at
+        if isinstance(premium_expires, str):
+            premium_expires = datetime.fromisoformat(premium_expires)
         if premium_expires.tzinfo is None:
             premium_expires = premium_expires.replace(tzinfo=timezone.utc)
         if premium_expires < datetime.now(timezone.utc):
             await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": False, "premium_expires_at": None}})
             user.is_premium = False
             user.premium_expires_at = None
+            
+    # Check if they own any organization
+    org = await db.organizations.find_one({"owner_id": user.user_id})
+    user.is_org_owner = bool(org)
+    
     return user
 
 
@@ -300,9 +356,22 @@ async def login_staff(data: Dict[str, str], response: Response):
     email = data.get("email", "").lower().strip()
     password = data.get("password", "").strip()
     
-    user_doc = await db.users.find_one({"email": email, "is_admin": True})
+    user_doc = await db.users.find_one({"email": email})
     if not user_doc:
-        raise HTTPException(status_code=401, detail="Identifiants invalides ou accès non autorisé")
+        raise HTTPException(status_code=401, detail="Identifiants invalides")
+
+    # Check if staff or org owner
+    is_staff = user_doc.get("is_admin", False)
+    is_org_owner = False
+    
+    if not is_staff:
+        # Check if they own at least one organization
+        org = await db.organizations.find_one({"owner_id": user_doc["user_id"]})
+        if org:
+            is_org_owner = True
+            
+    if not is_staff and not is_org_owner:
+        raise HTTPException(status_code=401, detail="Accès non autorisé")
     
     hashed_input = hashlib.sha256(password.encode()).hexdigest()
     if user_doc.get("password") != hashed_input:
@@ -315,3 +384,107 @@ async def login_staff(data: Dict[str, str], response: Response):
     
     response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", path="/", max_age=7*24*60*60)
     return User(**user_doc)
+
+
+@router.post("/auth/change-password")
+async def change_password(data: Dict[str, str], request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(request, authorization)
+    old_password = data.get("old_password", "").strip()
+    new_password = data.get("new_password", "").strip()
+    
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
+        
+    user_doc = await db.users.find_one({"user_id": user.user_id})
+    if not user_doc:
+         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+         
+    # If they have an old password, verify it
+    if user_doc.get("password"):
+        hashed_old = hashlib.sha256(old_password.encode()).hexdigest()
+        if user_doc["password"] != hashed_old:
+            raise HTTPException(status_code=401, detail="Ancien mot de passe incorrect")
+            
+    hashed_new = hashlib.sha256(new_password.encode()).hexdigest()
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"password": hashed_new}})
+    
+    return {"message": "Mot de passe mis à jour avec succès"}
+
+@router.post("/auth/forgot-password")
+async def forgot_password(request: Request, body: dict):
+    email = body.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email requis")
+    
+    # Check if user exists and is staff or org owner
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
+        # For security, we don't reveal if the user exists
+        return {"message": "Si l'adresse email est associée à un compte administrateur, vous recevrez un code de réinitialisation."}
+    
+    is_org_owner = await db.organizations.find_one({"owner_id": user_doc["user_id"]})
+    if not (user_doc.get("is_admin") or is_org_owner):
+        # Only admins/owners have passwords to reset
+        return {"message": "Si l'adresse email est associée à un compte administrateur, vous recevrez un code de réinitialisation."}
+
+    # Generate 6-digit code
+    code = f"{random.randint(100000, 999999)}"
+    
+    # Store code with expiration (15 mins)
+    expire_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.password_resets.update_one(
+        {"email": email},
+        {"$set": {"code": code, "expire_at": expire_at}},
+        upsert=True
+    )
+    
+    # Send real email
+    subject = "Réinitialisation de votre mot de passe - BibleQuest Admin"
+    body = f"""Bonjour,
+
+Vous avez demandé la réinitialisation de votre mot de passe pour l'administration de BibleQuest (Immersio).
+
+Votre code de validation est : {code}
+
+Il expire dans 15 minutes.
+Vous pouvez également utiliser ce lien pour réinitialiser directement :
+http://localhost:5173/reset-password?email={email}
+
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.
+
+L'équipe BibleQuest
+"""
+    await send_email(email, subject, body)
+    
+    return {"message": "Code envoyé par email"}
+
+@router.post("/auth/reset-password")
+async def reset_password(request: Request, body: dict):
+    email = body.get("email")
+    code = body.get("code")
+    new_password = body.get("new_password")
+    
+    if not all([email, code, new_password]):
+        raise HTTPException(status_code=400, detail="Tous les champs sont requis")
+    
+    # Verify code
+    reset_doc = await db.password_resets.find_one({"email": email, "code": code})
+    if not reset_doc:
+        raise HTTPException(status_code=400, detail="Code invalide")
+    
+    # Fix timezone comparison
+    expire_at = reset_doc["expire_at"]
+    if expire_at.tzinfo is None:
+        expire_at = expire_at.replace(tzinfo=timezone.utc)
+        
+    if expire_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Code expiré")
+    
+    # Hash and update password
+    hashed_pass = hashlib.sha256(new_password.encode()).hexdigest()
+    await db.users.update_one({"email": email}, {"$set": {"password": hashed_pass}})
+    
+    # Delete reset code
+    await db.password_resets.delete_one({"email": email})
+    
+    return {"message": "Mot de passe réinitialisé avec succès"}

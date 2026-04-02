@@ -2,16 +2,31 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from './components/Sidebar';
+import Toaster from './components/Toaster';
+import { useOrganization } from './hooks/useOrganization';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
 import UsersPage from './pages/Users';
 import GamesPage from './pages/Games';
 import AIPage from './pages/AI';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import JeuxPage from './pages/Jeux';
 import PlayGamePage from './pages/PlayGame';
+import OrganizationsPage from './pages/Organizations';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import ProfilePage from './pages/Profile';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+
+// Global Axios Interceptor for Org-Id
+axios.interceptors.request.use((config) => {
+  const activeOrgId = localStorage.getItem('active_org_id');
+  if (activeOrgId) {
+    config.headers['X-Org-Id'] = activeOrgId;
+  }
+  return config;
+});
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
@@ -40,11 +55,25 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  if (!user || !user.is_admin) {
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  return <>{children}</>;
+  const canAccess = user.is_admin || user.is_org_owner;
+  
+  if (!canAccess) {
+     return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <div className="flex bg-admin-bg min-h-screen">
+      <Sidebar user={user} />
+      <main className="flex-1 ml-64 min-h-screen">
+        {children}
+      </main>
+      <Toaster />
+    </div>
+  );
 };
 
 const App = () => {
@@ -52,25 +81,23 @@ const App = () => {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         
         <Route path="/*" element={
           <AuthGuard>
-            <div className="flex bg-admin-bg min-h-screen">
-              <Sidebar />
-              <main className="flex-1 ml-64 min-h-screen">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/users" element={<UsersPage />} />
-                  <Route path="/games" element={<GamesPage />} />
-                  <Route path="/ai-gen" element={<AIPage />} />
-                  <Route path="/jeux" element={<JeuxPage />} />
-                  <Route path="/play/:modeId" element={<PlayGamePage />} />
-                  <Route path="/settings" element={<div className="p-8 text-white/40">Paramètres - Bientôt disponible</div>} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </main>
-            </div>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/games" element={<GamesPage />} />
+              <Route path="/ai-gen" element={<AIPage />} />
+              <Route path="/jeux" element={<JeuxPage />} />
+              <Route path="/organizations" element={<OrganizationsPage />} />
+              <Route path="/play/:modeId" element={<PlayGamePage />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </AuthGuard>
         } />
       </Routes>

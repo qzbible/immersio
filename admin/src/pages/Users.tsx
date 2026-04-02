@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Search, UserPlus, Shield, Trash2, Mail } from 'lucide-react';
+import { toast } from '../components/Toaster';
+import ConfirmModal from '../components/ConfirmModal';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
@@ -8,6 +10,19 @@ const UsersPage = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     fetchUsers();
@@ -24,25 +39,40 @@ const UsersPage = () => {
     }
   };
 
-  const handlePromote = async (email: string) => {
-    if (!window.confirm(`Promouvoir ${email} en tant qu'administrateur ?`)) return;
-    try {
-      await axios.post(`${BACKEND_URL}/api/admin/promote`, { email }, { withCredentials: true });
-      alert("Utilisateur promu !");
-      fetchUsers();
-    } catch (err) {
-      alert("Erreur lors de la promotion");
-    }
+  const handlePromote = (email: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Promouvoir Admin ?",
+      message: `Voulez-vous vraiment accorder les droits d'administration à ${email} ?`,
+      type: 'warning',
+      onConfirm: async () => {
+        try {
+          await axios.post(`${BACKEND_URL}/api/admin/promote`, { email }, { withCredentials: true });
+          toast.success("Utilisateur promu !");
+          fetchUsers();
+        } catch (err) {
+          toast.error("Erreur lors de la promotion");
+        }
+      }
+    });
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Supprimer définitivement l'utilisateur ${name} ?`)) return;
-    try {
-      await axios.delete(`${BACKEND_URL}/api/admin/users/${id}`, { withCredentials: true });
-      setUsers(users.filter(u => u.user_id !== id));
-    } catch (err) {
-      alert("Impossible de supprimer cet utilisateur");
-    }
+  const handleDelete = (id: string, name: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Supprimer l'utilisateur ?",
+      message: `Voulez-vous supprimer définitivement ${name} ? Cette action est irréversible.`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`${BACKEND_URL}/api/admin/users/${id}`, { withCredentials: true });
+          setUsers(users.filter(u => u.user_id !== id));
+          toast.success("Utilisateur supprimé");
+        } catch (err) {
+          toast.error("Impossible de supprimer cet utilisateur");
+        }
+      }
+    });
   };
 
   return (
@@ -127,6 +157,15 @@ const UsersPage = () => {
           </tbody>
         </table>
       </div>
+      
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        onConfirm={confirmConfig.onConfirm}
+      />
     </div>
   );
 };

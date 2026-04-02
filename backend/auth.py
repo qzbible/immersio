@@ -35,11 +35,17 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
     
     if isinstance(user_doc.get('created_at'), str):
-        pass
+        user_doc['created_at'] = datetime.fromisoformat(user_doc['created_at'])
     if isinstance(user_doc.get('premium_expires_at'), str):
-        pass
+        user_doc['premium_expires_at'] = datetime.fromisoformat(user_doc['premium_expires_at'])
     
     return User(**user_doc)
+
+
+async def get_user_org_ids(user_id: str) -> list[str]:
+    cursor = db.organizations.find({"members.user_id": user_id}, {"org_id": 1})
+    orgs = await cursor.to_list(100)
+    return [o["org_id"] for o in orgs]
 
 
 async def get_admin_user(request: Request, authorization: Optional[str] = Header(None)) -> User:

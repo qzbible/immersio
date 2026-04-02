@@ -33,18 +33,18 @@ const Login = () => {
           <div className="inline-block p-4 rounded-2xl bg-admin-accent/10 text-admin-accent mb-4">
             <Shield size={40} />
           </div>
-          <h1 className="text-3xl font-bold text-white">BibleQuest Admin</h1>
+          <h1 className="text-3xl font-bold text-white">Immersio </h1>
           <p className="text-white/40 mt-2">Connectez-vous pour gérer la plateforme</p>
         </div>
 
         <div className="bg-admin-card border border-white/10 rounded-3xl p-8 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-white/40 uppercase tracking-wider">Email Professionnel</label>
+              <label className="text-xs font-bold text-white/40 uppercase tracking-wider">Email</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18} />
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   autoFocus
                   required
                   placeholder="admin@biblequest.com"
@@ -56,11 +56,14 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-white/40 uppercase tracking-wider">Mot de passe</label>
+              <div className="flex justify-between items-center px-1">
+                <label className="text-xs font-bold text-white/40 uppercase tracking-wider">Mot de passe</label>
+                <Link to="/forgot-password" title="Mot de passe oublié ?" className="text-[10px] uppercase font-bold text-admin-accent hover:underline">Mot de passe oublié ?</Link>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18} />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   required
                   placeholder="••••••••"
                   className="w-full bg-admin-bg border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white focus:outline-none focus:border-admin-accent transition-all"
@@ -77,7 +80,7 @@ const Login = () => {
               </div>
             )}
 
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-admin-accent hover:bg-admin-accent/80 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-admin-accent/20 flex items-center justify-center gap-2 disabled:opacity-50"
@@ -87,9 +90,11 @@ const Login = () => {
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-white/5 text-center">
-             <p className="text-sm text-white/40">Pas encore d'accès ? <Link to="/register" className="text-admin-accent hover:underline">Créer un compte Staff</Link></p>
-          </div>
+          {/* <div className="mt-8 pt-8 border-t border-white/5 text-center">
+             <p className="text-sm text-white/40 italic">
+               Pas encore d'accès ? Les comptes Staff sont créés par l'administrateur système.
+             </p>
+          </div> */}
         </div>
       </div>
     </div>

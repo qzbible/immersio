@@ -1,41 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Settings, Zap, Plus, Trash2, X, ListOrdered, RefreshCw, ExternalLink, Music, Volume2 } from 'lucide-react';
+import { Settings, Zap, Plus, Trash2, X, ListOrdered, RefreshCw, ExternalLink, Music, Volume2, Shield, Globe, Copy, Search, CheckCircle, Play } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+
+import Sidebar from '../components/Sidebar';
+import { toast } from '../components/Toaster';
+import ConfirmModal from '../components/ConfirmModal';
+import { useOrganization } from '../hooks/useOrganization';
+
+import GameEditor from './GameEditor';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
 const GamesPage = () => {
+  const { isOwner, isSystem } = useOrganization();
   const navigate = useNavigate();
   const [modes, setModes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
+
+  // GameEditor state
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editingMode, setEditingMode] = useState<any>(null);
-  const [audioBank, setAudioBank] = useState<{ music: any[], sfx: any[] }>({ music: [], sfx: [] });
 
-  const defaultForm = {
-    mode_id: '',
-    name: '',
-    category: 'Quiz et Tests',
-    description: '',
-    icon: '🎮',
-    difficulty: 'moyen',
-    duration_minutes: 5,
-    color: 'from-blue-400 to-blue-600',
-    available: true,
-    bg_music: '',
-    sfx_success: '',
-    sfx_fail: '',
-    sfx_click: '',
-    volume: 0.3,
-  };
-
-  // Form state
-  const [formData, setFormData] = useState<any>(defaultForm);
+  // ConfirmModal state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     fetchModes();
-    fetchAudioBank();
   }, []);
 
   const fetchModes = async () => {
@@ -49,357 +51,306 @@ const GamesPage = () => {
     }
   };
 
-  const fetchAudioBank = async () => {
-    try {
-      const resp = await axios.get(`${BACKEND_URL}/api/admin/audio-bank`, { withCredentials: true });
-      setAudioBank(resp.data);
-    } catch (err) {
-      // Non-blocking
-    }
-  };
-
   const toggleMode = async (modeId: string, currentStatus: boolean) => {
     try {
       await axios.patch(`${BACKEND_URL}/api/admin/game-modes/${modeId}`, {
         available: !currentStatus
       }, { withCredentials: true });
       setModes(modes.map(m => m.mode_id === modeId ? { ...m, available: !currentStatus } : m));
+      toast.success(`Mode ${!currentStatus ? 'activé' : 'désactivé'}`);
     } catch (err) {
-      alert("Erreur lors de la mise à jour du mode");
+      toast.error("Erreur lors de la mise à jour du mode");
     }
   };
 
-  const handleDelete = async (modeId: string) => {
-    if (!window.confirm("Supprimer définitivement ce mode de jeu ?")) return;
+  const handleDelete = (modeId: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Supprimer ce mode ?",
+      message: "Cette action est irréversible. Toutes les configurations de ce mode seront perdues.",
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`${BACKEND_URL}/api/admin/game-modes/${modeId}`, { withCredentials: true });
+          setModes(modes.filter(m => m.mode_id !== modeId));
+          toast.success("Mode supprimé avec succès");
+        } catch (err) {
+          toast.error("Erreur lors de la suppression");
+        }
+      }
+    });
+  };
+
+  const handleFork = async (mode: any, skipConfirm: boolean = false) => {
+    // if (!skipConfirm && !window.confirm(`Dupliquer le mode "${mode.name}" dans votre espace actuel ?`)) return;
     try {
-      await axios.delete(`${BACKEND_URL}/api/admin/game-modes/${modeId}`, { withCredentials: true });
-      setModes(modes.filter(m => m.mode_id !== modeId));
-    } catch (err) {
-      alert("Erreur lors de la suppression");
+      setLoading(true);
+      await axios.post(`${BACKEND_URL}/api/admin/game-modes/${mode.mode_id}/fork`, {}, { withCredentials: true });
+      toast.success("Mode dupliqué avec succès");
+      fetchModes();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || "Erreur lors de la duplication");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleOpenModal = (mode: any = null) => {
-    if (mode) {
-      setEditingMode(mode);
-      setFormData({ ...defaultForm, ...mode });
-    } else {
-      setEditingMode(null);
-      setFormData(defaultForm);
-    }
-    setModalOpen(true);
+    setEditingMode(mode);
+    setEditorOpen(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingMode) {
-        await axios.patch(`${BACKEND_URL}/api/admin/game-modes/${formData.mode_id}`, formData, { withCredentials: true });
-      } else {
-        await axios.post(`${BACKEND_URL}/api/admin/game-modes`, formData, { withCredentials: true });
+  const handleOpenCustomize = (mode: any) => {
+    setEditingMode(mode);
+    setEditorOpen(true);
+  };
+
+  const handleSync = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Synchronisation du contenu",
+      message: "Voulez-vous importer les questions par défaut (hardcoded) dans la base de données ? Cela peut créer des doublons si déjà importées.",
+      type: 'info',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          await axios.post(`${BACKEND_URL}/api/admin/sync-content`, {}, { withCredentials: true });
+          toast.success("Synchronisation réussie !");
+          fetchModes();
+        } catch (err: any) {
+          toast.error("Erreur lors de la synchronisation");
+        } finally {
+          setLoading(false);
+        }
       }
-      setModalOpen(false);
-      fetchModes();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Erreur lors de la sauvegarde");
-    }
-  };
-
-  const handleSync = async () => {
-    if (!window.confirm("Importer les questions par défaut (hardcoded) dans la base de données ?")) return;
-    try {
-      setLoading(true);
-      await axios.post(`${BACKEND_URL}/api/admin/sync-content`, {}, { withCredentials: true });
-      alert("Synchronisation réussie !");
-      fetchModes();
-    } catch (err: any) {
-      alert("Erreur lors de la synchronisation");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handlePlay = (modeId: string) => {
     navigate(`/play/${modeId}`);
   };
 
+  const [modeSearch, setModeSearch] = useState('');
+
+  const orgModes = modes.filter(m =>
+    (isSystem || m.owner_id !== 'system') &&
+    (m.name?.toLowerCase().includes(modeSearch.toLowerCase()) ||
+      m.description?.toLowerCase().includes(modeSearch.toLowerCase()))
+  );
+  const systemModes = isSystem ? [] : modes.filter(m => m.owner_id === 'system');
+
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+
   return (
-    <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-end">
+    <div className="p-8 space-y-12 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Modes de Jeu</h2>
-          <p className="text-white/40 text-sm">Gérez les modules et les règles de jeu.</p>
+          <h2 className="text-4xl font-black text-white mb-2 tracking-tighter uppercase italic">Configuration des <span className="text-admin-accent">Modes</span></h2>
+          <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em]">Gérez vos modules et règles de jeu personnalisées.</p>
         </div>
-        <div className="flex gap-4">
-          <button 
-            onClick={handleSync}
-            className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-white/10"
-          >
-            <RefreshCw size={20} className={loading ? "animate-spin" : ""} /> Synchroniser
-          </button>
-          <button 
-            onClick={() => handleOpenModal()}
-            className="bg-admin-accent hover:bg-admin-accent/80 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-admin-accent/20"
-          >
-            <Plus size={20} /> Nouveau Mode
-          </button>
+        <div className="flex flex-wrap gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18} />
+            <input
+              type="text"
+              placeholder="Chercher dans mes modes..."
+              className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-xs text-white focus:border-admin-accent outline-none transition-all font-bold"
+              value={modeSearch}
+              onChange={(e) => setModeSearch(e.target.value)}
+            />
+          </div>
+          {isOwner && (
+            <button
+              onClick={handleSync}
+              className="bg-white/5 hover:bg-white/10 text-white px-6 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all border border-white/10"
+            >
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""} /> Sync
+            </button>
+          )}
+          {isOwner && (
+            <button
+              onClick={() => setShowTemplatePicker(true)}
+              className="bg-admin-accent hover:bg-admin-accent/80 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[12px] flex items-center gap-2 transition-all shadow-xl shadow-admin-accent/20"
+            >
+              <Plus size={20} /> Nouveau Mode
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-            <div className="col-span-full py-12 text-center text-white/40 italic">Téléchargement des configurations...</div>
-        ) : modes.map((mode) => (
-          <div key={mode.mode_id} className="bg-admin-card border border-white/5 rounded-2xl p-6 hover:border-white/20 transition-all group relative overflow-hidden">
-            <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-xl bg-white/5 text-white/60`}>
-                <span className="text-2xl">{mode.icon}</span>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handlePlay(mode.mode_id)}
-                  className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500/60 hover:bg-emerald-500 hover:text-white transition-all"
-                  title="Jouer / Tester"
-                >
-                  <ExternalLink size={16} />
-                </button>
-                <button 
-                  onClick={() => handleOpenModal(mode)}
-                  className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-white/10 hover:text-white transition-all"
-                  title="Modifier"
-                >
-                  <Settings size={16} />
-                </button>
-                <button 
-                  onClick={() => handleDelete(mode.mode_id)}
-                  className="p-2 rounded-lg bg-red-500/10 text-red-500/40 hover:bg-red-500 hover:text-white transition-all"
-                  title="Supprimer"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
+      {/* SECTION: MY CUSTOM MODES */}
+      <section className="space-y-8">
+        <div className="flex items-center gap-6">
+          <h3 className="text-[10px] font-black text-white tracking-[0.4em] flex items-center gap-3 shrink-0">
+            <Shield size={16} className="text-admin-accent" /> MES MODES (<span className="text-admin-accent">{orgModes.length}</span>)
+          </h3>
+          <div className="h-px flex-1 bg-gradient-to-r from-white/10 to-transparent"></div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {loading ? (
+            <div className="col-span-full py-20 text-center text-white/20 italic font-bold tracking-widest animate-pulse uppercase">Initialisation...</div>
+          ) : orgModes.length === 0 ? (
+            <div className="col-span-full py-20 border-2 border-dashed border-white/5 rounded-[40px] text-center text-white/20">
+              <p className="font-black uppercase tracking-widest text-xs mb-2">Aucun mode trouvé</p>
+              <button onClick={() => setShowTemplatePicker(true)} className="text-[10px] text-admin-accent hover:underline font-black uppercase tracking-widest">Créer mon premier mode</button>
             </div>
-            
-            <h3 className="text-xl font-bold text-white mb-2">{mode.name}</h3>
-            <p className="text-sm text-white/40 mb-6 line-clamp-2">{mode.description}</p>
-            
-            <div className="flex items-center justify-between pt-6 border-t border-white/5">
-                <Link 
-                    to={`/jeux?category=${mode.mode_id}`}
-                    className="flex items-center gap-1 text-xs text-admin-accent hover:underline"
-                >
-                    <ListOrdered size={14} />
-                    <span>Questions</span>
-                </Link>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 text-xs text-white/40">
-                      <Zap size={14} className="text-admin-yellow" />
-                      <span className="text-white/80">{mode.category}</span>
-                  </div>
-                  <button 
-                      onClick={() => toggleMode(mode.mode_id, mode.available)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${
-                      mode.available 
-                          ? 'bg-emerald-400/10 text-emerald-400' 
-                          : 'bg-white/10 text-white/40'
-                      }`}
+          ) : orgModes.map((mode) => (
+            <div key={mode.mode_id} className="bg-admin-card border border-white/5 rounded-[32px] p-6 hover:border-admin-accent/30 transition-all group relative overflow-hidden shadow-2xl flex flex-col">
+              <div className="flex justify-between items-start mb-6">
+                <div className="p-3 rounded-2xl bg-white/5 text-white/80 group-hover:bg-admin-accent/20 group-hover:text-admin-accent transition-all">
+                  <span className="text-2xl">{mode.icon || '🎮'}</span>
+                </div>
+                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                  <button
+                    onClick={() => handlePlay(mode.mode_id)}
+                    className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all"
+                    title="Tester"
                   >
-                      {mode.available ? "ACTIF" : "OFF"}
+                    <Play size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleOpenCustomize(mode)}
+                    className="p-2.5 rounded-xl bg-admin-accent/10 text-admin-accent hover:bg-admin-accent hover:text-white transition-all"
+                    title="Configurer"
+                  >
+                    <Settings size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(mode.mode_id)}
+                    className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </div>
-            </div>
-          </div>
-        ))}
-      </div>
+              </div>
 
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-admin-bg/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-admin-card border border-white/10 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-white">{editingMode ? 'Modifier le Mode' : 'Nouveau Mode de Jeu'}</h3>
-              <button onClick={() => setModalOpen(false)} className="text-white/40 hover:text-white">
+              <div className="flex-1">
+                <h3 className="text-lg font-black text-white mb-2 leading-tight uppercase tracking-tight italic group-hover:text-admin-accent transition-colors">{mode.name}</h3>
+                <p className="text-[10px] text-white/30 mb-8 line-clamp-2 font-bold uppercase tracking-widest leading-loose">{mode.description}</p>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
+                <div className="flex items-center gap-1.5 text-[9px] font-black uppercase text-white/40 tracking-widest bg-white/5 px-2.5 py-1 rounded-full">
+                  <Zap size={10} className="text-admin-yellow" />
+                  <span>{mode.category}</span>
+                </div>
+                <button
+                  onClick={() => toggleMode(mode.mode_id, mode.available)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[8px] font-black transition-all tracking-[0.2em] ${mode.available
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-white/5 text-white/20 border border-white/5'
+                    }`}
+                >
+                  {mode.available ? "ACTIF" : "OFF"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* SECTION: SYSTEM TEMPLATES */}
+      <section className="space-y-6 pt-12 border-t border-white/5">
+        <div className="flex items-center gap-4">
+          <h3 className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] flex items-center gap-2">
+            <Globe size={14} /> MODÈLES BIBLEQUEST
+          </h3>
+          <div className="h-px flex-1 bg-gradient-to-r from-white/5 to-transparent"></div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {systemModes.map((mode) => (
+            <div key={mode.mode_id} className="bg-white/5 border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all group opacity-40 hover:opacity-100 flex items-center gap-4">
+              <span className="text-2xl grayscale group-hover:grayscale-0 transition-all shrink-0">{mode.icon}</span>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-[10px] font-black text-white uppercase tracking-tight truncate">{mode.name}</h4>
+                <button
+                  onClick={() => handleFork(mode)}
+                  className="text-[8px] font-black text-admin-accent uppercase tracking-widest hover:underline mt-1 flex items-center gap-1"
+                >
+                  <Copy size={10} /> Personnaliser
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* TEMPLATE PICKER MODAL (FOR THE "+" BUTTON) */}
+      {showTemplatePicker && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-300">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setShowTemplatePicker(false)}></div>
+          <div className="bg-admin-card border border-white/10 rounded-[48px] w-full max-w-4xl max-h-[85vh] overflow-hidden relative z-10 shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col border-t-white/20">
+            <div className="p-10 border-b border-white/5 flex justify-between items-center bg-black/20">
+              <div>
+                <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter">Nouvelle <span className="text-admin-accent">Configuration</span></h3>
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mt-2">Choisissez un modèle de base pour commencer</p>
+              </div>
+              <button onClick={() => setShowTemplatePicker(false)} className="p-4 bg-white/5 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-all">
                 <X size={24} />
               </button>
             </div>
-            
-            <form onSubmit={handleSave} className="p-8 space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Identifiant (ID)</label>
-                  <input 
-                    type="text" 
-                    disabled={!!editingMode}
-                    required
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent disabled:opacity-50"
-                    placeholder="ex: quiz_flash"
-                    value={formData.mode_id}
-                    onChange={(e) => setFormData({...formData, mode_id: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Nom du mode</label>
-                  <input 
-                    type="text" 
-                    required
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent"
-                    placeholder="ex: Quiz Flash"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Catégorie</label>
-                  <select 
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent"
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                  >
-                    <option>Quiz et Tests</option>
-                    <option>Jeux de Mots</option>
-                    <option>Rapidité</option>
-                    <option>Logique</option>
-                    <option>Défis Flash</option>
-                    <option>Aventure</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Icône (Emoji)</label>
-                  <input 
-                    type="text" 
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent"
-                    placeholder="ex: ⚡"
-                    value={formData.icon}
-                    onChange={(e) => setFormData({...formData, icon: e.target.value})}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Description</label>
-                <textarea 
-                  className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent h-24"
-                  placeholder="Expliquez brièvement le but du jeu..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-6">
-                 <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Difficulté</label>
-                  <select 
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent"
-                    value={formData.difficulty}
-                    onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
-                  >
-                    <option value="facile">Facile</option>
-                    <option value="moyen">Moyen</option>
-                    <option value="difficile">Difficile</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Durée (min)</label>
-                  <input 
-                    type="number" 
-                    className="w-full bg-admin-bg border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-admin-accent"
-                    value={formData.duration_minutes}
-                    onChange={(e) => setFormData({...formData, duration_minutes: parseInt(e.target.value)})}
-                  />
-                </div>
-                <div className="flex items-end pb-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded border-white/10 bg-admin-bg text-admin-accent focus:ring-admin-accent"
-                      checked={formData.available}
-                      onChange={(e) => setFormData({...formData, available: e.target.checked})}
-                    />
-                    <span className="text-sm text-white/80">Disponible</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Audio Configuration */}
-              <div className="border border-white/5 rounded-2xl p-5 space-y-4 bg-white/[0.02]">
-                <div className="flex items-center gap-2 mb-2">
-                  <Music size={16} className="text-admin-accent" />
-                  <span className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Configuration Audio</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Musique de Fond</label>
-                    <select
-                      className="w-full bg-admin-bg border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-admin-accent"
-                      value={formData.bg_music || ''}
-                      onChange={(e) => setFormData({...formData, bg_music: e.target.value})}
-                    >
-                      <option value="">— Aucune musique —</option>
-                      {audioBank.music.map(m => (
-                        <option key={m.id} value={m.url}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Volume</label>
-                    <div className="flex items-center gap-3">
-                      <Volume2 size={16} className="text-white/30" />
-                      <input
-                        type="range" min="0" max="1" step="0.05"
-                        className="flex-1 accent-admin-accent"
-                        value={formData.volume ?? 0.3}
-                        onChange={(e) => setFormData({...formData, volume: parseFloat(e.target.value)})}
-                      />
-                      <span className="text-xs text-white/40 w-8 text-right">{Math.round((formData.volume ?? 0.3) * 100)}%</span>
-                    </div>
+            <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar">
+              {systemModes.map(mode => (
+                <div
+                  key={`picker-${mode.mode_id}`}
+                  onClick={() => {
+                    handleFork(mode, true);
+                    setShowTemplatePicker(false);
+                  }}
+                  className="bg-white/5 border border-white/5 rounded-[32px] p-8 hover:border-admin-accent/50 hover:bg-admin-accent/5 transition-all group cursor-pointer flex items-center gap-8 shadow-sm"
+                >
+                  <div className="text-5xl p-6 bg-black/20 rounded-3xl group-hover:scale-110 transition-transform shadow-inner">{mode.icon}</div>
+                  <div className="flex-1">
+                    <h4 className="text-xl font-black text-white uppercase tracking-tight">{mode.name}</h4>
+                    <p className="text-[9px] font-black text-admin-accent/60 uppercase tracking-widest mt-1">{mode.category}</p>
+                    <p className="text-[10px] text-white/30 line-clamp-2 mt-3 font-medium">{mode.description}</p>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  {([
-                    { field: 'sfx_success', label: 'Bip Succès ✅' },
-                    { field: 'sfx_fail',    label: 'Bip Échec ❌' },
-                    { field: 'sfx_click',   label: 'Clic 🖱️' },
-                  ] as const).map(({ field, label }) => (
-                    <div key={field} className="space-y-1">
-                      <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider">{label}</label>
-                      <select
-                        className="w-full bg-admin-bg border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-admin-accent"
-                        value={(formData as any)[field] || ''}
-                        onChange={(e) => setFormData({...formData, [field]: e.target.value})}
-                      >
-                        <option value="">— Aucun —</option>
-                        {audioBank.sfx.map(s => (
-                          <option key={s.id} value={s.url}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+              ))}
+              <div
+                onClick={() => {
+                  handleOpenModal();
+                  setShowTemplatePicker(false);
+                }}
+                className="bg-white/5 border-2 border-dashed border-white/10 rounded-[32px] p-8 hover:border-white/40 transition-all group cursor-pointer flex items-center justify-center gap-6"
+              >
+                <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center text-white/20 group-hover:text-white transition-all group-hover:scale-110">
+                  <Plus size={32} />
+                </div>
+                <div className="text-left">
+                  <span className="block text-sm font-black text-white/20 uppercase tracking-widest group-hover:text-white transition-all">Mode Vide</span>
+                  <span className="block text-[10px] font-bold text-white/10 uppercase tracking-widest mt-1">Configuration libre</span>
                 </div>
               </div>
-
-              <div className="pt-6 border-t border-white/5 flex gap-4">
-                <button 
-                  type="button" 
-                  onClick={() => setModalOpen(false)}
-                  className="flex-1 py-4 rounded-xl border border-white/10 text-white font-bold hover:bg-white/5 transition-all"
-                >
-                  Annuler
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-4 rounded-xl bg-admin-accent text-white font-bold shadow-lg shadow-admin-accent/20 hover:bg-admin-accent/80 transition-all"
-                >
-                  Sauvegarder
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
+
+      {editorOpen && (
+        <GameEditor
+          mode={editingMode}
+          onClose={() => setEditorOpen(false)}
+          onSave={() => { 
+            setEditorOpen(false); 
+            toast.success("Configuration enregistrée");
+            fetchModes(); 
+          }}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        onConfirm={confirmConfig.onConfirm}
+      />
     </div>
   );
 };

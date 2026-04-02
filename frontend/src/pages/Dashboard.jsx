@@ -7,7 +7,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Trophy, Heart, Coins, Crown, Zap, LogOut, Shield, Play, Sparkles, Flame, Tv, Gamepad2, Users, Medal } from 'lucide-react';
+import { Trophy, Heart, Coins, Crown, Zap, LogOut, Shield, Play, Sparkles, Flame, Tv, Gamepad2, Users, Medal, Building2, ExternalLink } from 'lucide-react';
 import DailyMannaModal from '@/components/DailyMannaModal';
 import ChurchModal from '@/components/ChurchModal';
 import OrbitalAvatar from '@/components/OrbitalAvatar';
@@ -24,21 +24,43 @@ const Dashboard = () => {
   const [showDailyManna, setShowDailyManna] = useState(false);
   const [showChurchModal, setShowChurchModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [userOrgs, setUserOrgs] = useState([]);
 
-  useEffect(() => { fetchUserData(); }, []);
+  useEffect(() => { 
+    fetchUserData(); 
+    checkPayment();
+  }, []);
+
+  const checkPayment = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    if (sessionId) {
+      try {
+        await axios.post(`${BACKEND_URL}/api/verify-payment`, { session_id: sessionId }, { withCredentials: true });
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Refresh data
+        fetchUserData();
+      } catch (error) {
+        console.error("Payment verification failed", error);
+      }
+    }
+  };
 
   const fetchUserData = async () => {
     try {
-      const [userRes, badgesRes, dailyRes, modesRes] = await Promise.all([
+      const [userRes, badgesRes, dailyRes, modesRes, orgsRes] = await Promise.all([
         axios.get(`${BACKEND_URL}/api/auth/me`, { withCredentials: true }),
         axios.get(`${BACKEND_URL}/api/badges`, { withCredentials: true }),
         axios.get(`${BACKEND_URL}/api/daily-manna/status`, { withCredentials: true }),
-        axios.get(`${BACKEND_URL}/api/game-modes`, { withCredentials: true })
+        axios.get(`${BACKEND_URL}/api/game-modes`, { withCredentials: true }),
+        axios.get(`${BACKEND_URL}/api/orgs/`, { withCredentials: true })
       ]);
       setUser(userRes.data);
       setBadges(badgesRes.data);
       setDailyMannaStatus(dailyRes.data);
       setGameModes(modesRes.data || []);
+      setUserOrgs(orgsRes.data || []);
       if (dailyRes.data.can_play) setTimeout(() => setShowDailyManna(true), 1000);
     } catch (error) {
       if (error.response?.status === 401) navigate('/');
@@ -104,14 +126,13 @@ const Dashboard = () => {
           
           {/* Hero Section (Avatar & Stats) */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white/5 backdrop-blur-md rounded-3xl p-6 border border-white/10 shadow-2xl">
+            {/* ... (avatar and xp code) ... */}
             <div className="flex flex-col items-center justify-center text-center">
               <OrbitalAvatar user={user} badges={badges} size={110} />
-              
               <h2 className="text-2xl font-bold text-white mt-6 mb-1" style={{ fontFamily: 'Manrope, sans-serif' }}>
                 {user?.name}
                 {user?.is_premium && <Crown className="inline w-5 h-5 text-yellow-400 ml-2 -mt-1" />}
               </h2>
-
               <div className="w-full mt-3">
                 <div className="flex justify-between text-xs text-blue-200 mb-1 font-medium tracking-wide pb-1">
                   <span>XP {user?.xp} / {xpForNextLevel}</span>
@@ -120,8 +141,50 @@ const Dashboard = () => {
                 <Progress value={xpProgress} className="h-2 bg-blue-950/50" />
               </div>
 
+              {/* Organization Status */}
+              <div className="w-full mt-6 pt-6 border-t border-white/5">
+                {userOrgs.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                       <span className="text-[10px] text-white/40 uppercase font-black tracking-widest flex items-center gap-2">
+                         <Building2 size={12} className="text-blue-400" /> Mon Organisation
+                       </span>
+                       <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-bold">ACTIF</span>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
+                       <div className="w-10 h-10 bg-blue-600/20 text-blue-400 rounded-xl flex items-center justify-center font-bold">
+                         {userOrgs[0].name.charAt(0)}
+                       </div>
+                       <div className="flex-1 text-left">
+                          <p className="text-sm font-bold text-white leading-tight truncate">{userOrgs[0].name}</p>
+                          <p className="text-[9px] text-white/40 uppercase tracking-tighter">Plan {userOrgs[0].plan || 'Gratuit'}</p>
+                       </div>
+                       <a 
+                         href="http://localhost:5173" 
+                         className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all shadow-xl"
+                         title="Gérer l'organisation"
+                       >
+                         <ExternalLink size={16} />
+                       </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => navigate('/premium')}
+                    className="p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-white/10 cursor-pointer group hover:border-blue-500/40 transition-all text-left"
+                  >
+                    <div className="flex items-center gap-2 text-blue-400 mb-1">
+                      <Sparkles size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Lancez votre Eglise</span>
+                    </div>
+                    <p className="text-xs text-white/80 leading-snug">Créez votre propre espace personnalisé sur BibleQuest.</p>
+                  </div>
+                )}
+              </div>
+
               {/* Quick Stats row */}
               <div className="flex w-full items-center justify-between mt-6 bg-black/20 px-4 py-3 rounded-2xl border border-white/5">
+                 {/* ... */}
                 <div className="flex flex-col items-center">
                   <Heart className="w-5 h-5 text-red-500 mb-1" />
                   <span className="text-lg font-bold">{user?.lives}</span>

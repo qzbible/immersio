@@ -1,3 +1,4 @@
+from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ class User(BaseModel):
     is_premium: bool = False
     premium_expires_at: Optional[Any] = None
     mmr: int = 1000
+    is_org_owner: bool = False
     church: str = ""
     created_at: Any = ""
     is_admin: bool = False
@@ -51,6 +53,8 @@ class Question(BaseModel):
     difficulty: str = "medium"
     book: str = ""
     chapter: int = 0
+    owner_id: str = "system"
+    visibility: str = "public"
 
 
 class UserProgress(BaseModel):
@@ -115,6 +119,8 @@ class CheckoutRequest(BaseModel):
     package_type: str
     success_url: str
     cancel_url: str
+    org_name: Optional[str] = None
+    plan: Optional[str] = None
 
 
 class DuoMatchRequest(BaseModel):
@@ -138,16 +144,16 @@ class JoinGroupRequest(BaseModel):
 
 
 class GenerateQuestionsRequest(BaseModel):
-    category: str
     lang: str = "both"
     num_questions: int = 5
     topic: Optional[str] = None
+    type: str = "vrai_faux" # Added this to replace category for prompt selection
+    context_text: Optional[str] = None
 
 
 class SaveQuestionRequest(BaseModel):
     # This was used for bulk save, keeping for compatibility
     question_id: Optional[str] = None
-    category: str
     lang: str
     text: str
     answer: Any
@@ -161,7 +167,6 @@ class SaveQuestionRequest(BaseModel):
 class AdminQuestion(BaseModel):
     model_config = ConfigDict(extra="ignore")
     question_id: Optional[str] = None
-    category: str
     lang: str
     text: str
     answer: Any
@@ -171,13 +176,23 @@ class AdminQuestion(BaseModel):
     approved: bool = True
     source: str = "manual"
     created_at: Optional[str] = None
+    owner_id: str = "system"
+    visibility: str = "public"
+    tags: List[str] = []
+    type: str = "single_choice" # single_choice, multiple_choice, true_false, qui_a_dit, chrono_versets, anagrammes
+    score: int = 10
+    author: Optional[str] = None
+    author: Optional[str] = None      # For qui_a_dit
+    missing_word: Optional[str] = None # For chrono_versets
+    word: Optional[str] = None         # For anagrammes
+    hint: Optional[str] = None         # For anagrammes
+
 
 
 
 class GameMode(BaseModel):
     model_config = ConfigDict(extra="ignore")
     mode_id: str
-    category: str
     name: str
     description: str
     icon: str
@@ -185,3 +200,56 @@ class GameMode(BaseModel):
     duration_minutes: int = 5
     color: str = "from-blue-400 to-blue-600"
     available: bool = True
+    owner_id: str = "system"
+    visibility: str = "public"
+    question_ids: List[str] = []  # Explicit list of questions to include
+    overrides: Dict[str, Any] = {} # Per-question overrides (difficulty, etc.)
+
+
+class OrgRole(str, Enum):
+    OWNER = "owner"
+    MEMBER = "member"
+
+
+class OrgMember(BaseModel):
+    user_id: str
+    role: OrgRole
+    joined_at: Optional[str] = None
+
+
+class Organization(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    org_id: str
+    slug: str
+    name: str
+    description: Optional[str] = None
+    picture: str = "/default_org.png"
+    owner_id: str
+    members: List[OrgMember] = []
+    created_at: Optional[str] = None
+    plan: str = "free"  # free, silver, gold
+    plan_expires_at: Optional[str] = None
+    settings: Dict[str, Any] = {}
+    role: Optional[str] = None # Injected for the current user
+
+
+class InvitationStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+
+
+class Invitation(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    invitation_id: str
+    org_id: str
+    org_name: str
+    inviter_id: str
+    inviter_name: str
+    invitee_email: str
+    invitee_id: Optional[str] = None  # None if user doesn't exist yet
+    role: OrgRole = OrgRole.MEMBER
+    status: InvitationStatus = InvitationStatus.PENDING
+    created_at: str
+    expires_at: Optional[str] = None

@@ -7,7 +7,13 @@ import { Check, X } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
 
-const VraiFaux = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, modeId: string }) => {
+const VraiFaux = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
+  onSubmit: (answers: any) => void, 
+  modeId: string,
+  playSuccess?: () => void,
+  playFail?: () => void,
+  playClick?: () => void
+}) => {
   const [gameData, setGameData] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<any>({});
@@ -33,6 +39,7 @@ const VraiFaux = ({ onSubmit, modeId }: { onSubmit: (answers: any) => void, mode
   };
 
   const handleAnswer = (answer: boolean) => {
+    playClick?.();
     const updatedAnswers = { ...answers, [`q_${currentIndex}`]: answer };
     setAnswers(updatedAnswers);
     

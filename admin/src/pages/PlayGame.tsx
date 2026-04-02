@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Gamepad2, RotateCcw } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+// import { Button } from '@/components/ui/Button';
+// import { Card } from '@/components/ui/Card';
 import axios from 'axios';
-import { useAudio } from '@/hooks/useAudio';
+// import { useAudio } from '@/hooks/useAudio';
 
 // Import Game Components
-import VraiFaux from '@/components/games/VraiFaux';
+// import VraiFaux from '@/components/games/VraiFaux';
 import QuiADitQuoi from '@/components/games/QuiADitQuoi';
 import ChronoVersets from '@/components/games/ChronoVersets';
 import Anagrammes from '@/components/games/Anagrammes';
@@ -20,6 +20,10 @@ import BrebisPerdue from '@/components/games/BrebisPerdue';
 import MultiplierPains from '@/components/games/MultiplierPains';
 import BlindTest from '@/components/games/BlindTest';
 import VoyagePaul from '@/components/games/VoyagePaul';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { useAudio } from '@/hooks/useAudio';
+import VraiFaux from '@/components/games/VraiFaux';
 
 const CATEGORY_LABELS: Record<string, string> = {
   "quiz_vrai_faux": "Quiz Vrai/Faux",
@@ -54,16 +58,16 @@ const PlayGamePage = () => {
     if (!modeId) return;
     axios.get(`${BACKEND_URL}/api/admin/game-modes/${modeId}`, { withCredentials: true })
       .then(r => setModeConfig(r.data))
-      .catch(() => {}); // graceful fallback
+      .catch(() => { }); // graceful fallback
   }, [modeId]);
 
   // Setup audio from mode config
   const { playSuccess, playFail, playClick, stopMusic } = useAudio({
-    bg_music:    modeConfig?.bg_music,
+    bg_music: modeConfig?.bg_music,
     sfx_success: modeConfig?.sfx_success,
-    sfx_fail:    modeConfig?.sfx_fail,
-    sfx_click:   modeConfig?.sfx_click,
-    volume:      modeConfig?.volume ?? 0.3,
+    sfx_fail: modeConfig?.sfx_fail,
+    sfx_click: modeConfig?.sfx_click,
+    volume: modeConfig?.volume ?? 0.3,
   });
 
   const handleGameSubmit = (results: any) => {
@@ -76,36 +80,38 @@ const PlayGamePage = () => {
   };
 
   const renderGame = () => {
-    switch (modeId) {
+    const effectiveModeId = modeConfig?.forked_from || modeId;
+
+    switch (effectiveModeId) {
       case 'quiz_vrai_faux':
       case 'vrai_faux':
-        return <VraiFaux onSubmit={handleGameSubmit} modeId={modeId || 'quiz_vrai_faux'} />;
+        return <VraiFaux onSubmit={handleGameSubmit} modeId={modeId || 'quiz_vrai_faux'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'quiz_qui_a_dit':
       case 'qui_a_dit':
-        return <QuiADitQuoi onSubmit={handleGameSubmit} modeId={modeId || 'quiz_qui_a_dit'} />;
+        return <QuiADitQuoi onSubmit={handleGameSubmit} modeId={modeId || 'quiz_qui_a_dit'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'chrono_versets':
-        return <ChronoVersets onSubmit={handleGameSubmit} modeId={modeId || 'chrono_versets'} />;
+        return <ChronoVersets onSubmit={handleGameSubmit} modeId={modeId || 'chrono_versets'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'anagrammes':
-        return <Anagrammes onSubmit={handleGameSubmit} modeId={modeId || 'anagrammes'} />;
+        return <Anagrammes onSubmit={handleGameSubmit} modeId={modeId || 'anagrammes'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'memory_biblique':
-        return <MemoryBiblique onSubmit={handleGameSubmit} modeId={modeId || 'memory_biblique'} />;
+        return <MemoryBiblique onSubmit={handleGameSubmit} modeId={modeId || 'memory_biblique'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'mots_caches':
-        return <MotsCaches onSubmit={handleGameSubmit} modeId={modeId || 'mots_caches'} />;
+        return <MotsCaches onSubmit={handleGameSubmit} modeId={modeId || 'mots_caches'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'la_manne':
-        return <LaManne onSubmit={handleGameSubmit} modeId={modeId || 'la_manne'} />;
+        return <LaManne onSubmit={handleGameSubmit} modeId={modeId || 'la_manne'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'tri_livres':
-        return <TriLivres onSubmit={handleGameSubmit} modeId={modeId || 'tri_livres'} />;
+        return <TriLivres onSubmit={handleGameSubmit} modeId={modeId || 'tri_livres'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'labyrinthe_exode':
       case 'labyrinthe':
-        return <LabyrintheExode onSubmit={handleGameSubmit} modeId={modeId || 'labyrinthe_exode'} />;
+        return <LabyrintheExode onSubmit={handleGameSubmit} modeId={modeId || 'labyrinthe_exode'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'brebis_perdue':
-        return <BrebisPerdue onSubmit={handleGameSubmit} modeId={modeId || 'brebis_perdue'} />;
+        return <BrebisPerdue onSubmit={handleGameSubmit} modeId={modeId || 'brebis_perdue'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'multiplier_pains':
-        return <MultiplierPains onSubmit={handleGameSubmit} modeId={modeId || 'multiplier_pains'} />;
+        return <MultiplierPains onSubmit={handleGameSubmit} modeId={modeId || 'multiplier_pains'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'blind_test':
-        return <BlindTest onSubmit={handleGameSubmit} modeId={modeId || 'blind_test'} />;
+        return <BlindTest onSubmit={handleGameSubmit} modeId={modeId || 'blind_test'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       case 'voyage_paul':
-        return <VoyagePaul onSubmit={handleGameSubmit} modeId={modeId || 'voyage_paul'} />;
+        return <VoyagePaul onSubmit={handleGameSubmit} modeId={modeId || 'voyage_paul'} playSuccess={playSuccess} playFail={playFail} playClick={playClick} />;
       default:
         return (
           <div className="text-center p-12">
