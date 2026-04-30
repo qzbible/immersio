@@ -8,7 +8,7 @@ import {
 import { toast } from '../components/Toaster';
 import ConfirmModal from '../components/ConfirmModal';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const Organizations = () => {
   const { organizations, activeOrgId, switchOrg, refreshOrgs, isPersonal, isSystem, isOwner } = useOrganization();

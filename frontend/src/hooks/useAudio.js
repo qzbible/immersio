@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 /** Resolve audio URL: prepend backend base for local /static/ paths */
 const resolveUrl = (url) => {

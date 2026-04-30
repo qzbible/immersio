@@ -8,7 +8,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { toast } from '../components/Toaster';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const AIPage = () => {
   const navigate = useNavigate();

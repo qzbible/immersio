@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import axios from 'axios';
 import { Check, X } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const VraiFaux = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
   onSubmit: (answers: any) => void, 

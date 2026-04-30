@@ -11,12 +11,13 @@ import {
   ChevronDown,
   Globe,
   User as UserIcon,
-  Key
+  Key,
+  FileUp
 } from 'lucide-react';
 import { useOrganization } from '../hooks/useOrganization';
 import axios from 'axios';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 interface SidebarProps {
   user: any;
@@ -43,6 +44,7 @@ const Sidebar = ({ user }: SidebarProps) => {
     { to: "/games", icon: <Gamepad2 size={20} />, label: "Configuration des Modes" },
     { to: "/ai-gen", icon: <Sparkles size={20} />, label: "Générateur IA" },
     { to: "/jeux", icon: <BookOpen size={20} />, label: "Banque de Questions" },
+    { to: "/import-exams", icon: <FileUp size={20} />, label: "Import Examens" },
   ];
 
   // Only show Security for staff or org owners

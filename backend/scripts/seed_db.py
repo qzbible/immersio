@@ -1,12 +1,14 @@
 import asyncio
 import os
+import sys
 import uuid
 import hashlib
-from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
 
-# Import data from the same backend structure
-# We'll mock or import what we need to avoid complex dependency issues in a standalone script
+# Add parent directory to path to allow imports before other local imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from motor.motor_asyncio import AsyncIOMotorClient
 from i18n_content import (
     get_quiz_qui_a_dit, get_quiz_vrai_faux, get_chrono_versets,
     get_mots_caches, get_anagrammes, get_labyrinthe_questions

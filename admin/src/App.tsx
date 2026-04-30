@@ -16,8 +16,9 @@ import OrganizationsPage from './pages/Organizations';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import ProfilePage from './pages/Profile';
+import ImportExams from './pages/ImportExams';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // Global Axios Interceptor for Org-Id
 axios.interceptors.request.use((config) => {
@@ -92,6 +93,7 @@ const App = () => {
               <Route path="/games" element={<GamesPage />} />
               <Route path="/ai-gen" element={<AIPage />} />
               <Route path="/jeux" element={<JeuxPage />} />
+              <Route path="/import-exams" element={<ImportExams />} />
               <Route path="/organizations" element={<OrganizationsPage />} />
               <Route path="/play/:modeId" element={<PlayGamePage />} />
               <Route path="/settings" element={<Settings />} />

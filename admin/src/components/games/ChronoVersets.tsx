@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import axios from 'axios';
 import { Timer } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const ChronoVersets = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
   onSubmit: (answers: any) => void, 

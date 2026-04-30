@@ -10,7 +10,7 @@ import { useOrganization } from '../hooks/useOrganization';
 
 import GameEditor from './GameEditor';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const GamesPage = () => {
   const { isOwner, isSystem } = useOrganization();

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Lock, Hash, CheckCircle, ArrowLeft } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();

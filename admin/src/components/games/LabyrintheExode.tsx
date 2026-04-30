@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import axios from 'axios';
 import GameQuestionOverlay from './GameQuestionOverlay';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const LabyrintheExode = ({ onSubmit, modeId, playSuccess, playFail, playClick }: { 
   onSubmit: (answers: any) => void, 

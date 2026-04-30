@@ -13,8 +13,8 @@ import Campaign from '@/pages/Campaign';
 import QuizGame from '@/pages/QuizGame';
 import Premium from '@/pages/Premium';
 import PremiumSuccess from '@/pages/PremiumSuccess';
-import GameModes from '@/pages/GameModes';
-import GamePlay from '@/pages/GamePlay';
+import ExamLibrary from '@/pages/ExamLibrary';
+import ExamWrapper from '@/pages/ExamWrapper';
 import ModeDuo from '@/pages/ModeDuo';
 import DuoPlay from '@/pages/DuoPlay';
 import DuoHistory from '@/pages/DuoHistory';
@@ -27,6 +27,9 @@ import Achievements from '@/pages/Achievements';
 import Tournaments from '@/pages/Tournaments';
 import { SpectatorList, SpectatorView } from '@/pages/Spectator';
 import Admin from '@/pages/Admin';
+import PrivacyPolicy from '@/pages/PrivacyPolicy';
+import MyEvaluations from '@/pages/MyEvaluations';
+import EvaluationDetail from '@/pages/EvaluationDetail';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuthStore();
@@ -37,13 +40,13 @@ const ProtectedRoute = ({ children }) => {
 const AdminRoute = ({ children }) => {
   const { user, isAuthenticated, loading } = useAuthStore();
   if (loading) return null;
-  return (isAuthenticated && user?.is_admin) ? children : <Navigate to="/dashboard" replace />;
+  return (isAuthenticated && user?.is_admin) ? children : <Navigate to="/certifications" replace />;
 };
 
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuthStore();
   if (loading) return null;
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+  return isAuthenticated ? <Navigate to="/certifications" replace /> : children;
 };
 
 function AppRouter() {
@@ -71,8 +74,8 @@ function AppRouter() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
-        <div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bq-bg, #0d0e14)' }}>
+        <div className="w-10 h-10 rounded-full animate-spin" style={{ border: '2.5px solid rgba(249,115,22,0.2)', borderTopColor: '#f97316' }} />
       </div>
     );
   }
@@ -83,14 +86,21 @@ function AppRouter() {
 
   return (
     <Routes>
-      <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
+      <Route path="/" element={<MainLayout><Landing /></MainLayout>} />
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       
       {/* Protected Routes */}
-      <Route path="/dashboard" element={<ProtectedRoute><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />
+      <Route path="/dashboard" element={<Navigate to="/certifications" replace />} />
       <Route path="/campaign" element={<ProtectedRoute><Campaign /></ProtectedRoute>} />
       <Route path="/quiz" element={<ProtectedRoute><QuizGame /></ProtectedRoute>} />
-      <Route path="/games" element={<ProtectedRoute><MainLayout><GameModes /></MainLayout></ProtectedRoute>} />
-      <Route path="/play/:modeId" element={<ProtectedRoute><GamePlay /></ProtectedRoute>} />
+      {/* Certification routes (new) */}
+      <Route path="/certifications" element={<ProtectedRoute><MainLayout><ExamLibrary /></MainLayout></ProtectedRoute>} />
+      <Route path="/exam/:modeId" element={<ProtectedRoute><ExamWrapper /></ProtectedRoute>} />
+      <Route path="/evaluations" element={<ProtectedRoute><MainLayout><MyEvaluations /></MainLayout></ProtectedRoute>} />
+      <Route path="/evaluations/:attemptId" element={<ProtectedRoute><MainLayout><EvaluationDetail /></MainLayout></ProtectedRoute>} />
+      {/* Legacy aliases (compat) */}
+      <Route path="/games" element={<ProtectedRoute><MainLayout><ExamLibrary /></MainLayout></ProtectedRoute>} />
+      <Route path="/play/:modeId" element={<ProtectedRoute><ExamWrapper /></ProtectedRoute>} />
       <Route path="/duo" element={<ProtectedRoute><ModeDuo /></ProtectedRoute>} />
       <Route path="/duo/play/:matchId" element={<ProtectedRoute><DuoPlay /></ProtectedRoute>} />
       <Route path="/duo/history" element={<ProtectedRoute><DuoHistory /></ProtectedRoute>} />

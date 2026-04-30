@@ -12,7 +12,12 @@ import uuid
 
 from database import db
 from auth import get_admin_user, get_current_user, get_user_org_ids
-from models import GenerateQuestionsRequest, SaveQuestionRequest, GameMode, AdminQuestion, OrgRole, Invitation, InvitationStatus, OrgMember
+from models import (
+    GenerateQuestionsRequest, SaveQuestionRequest, GameMode, AdminQuestion, 
+    OrgRole, Invitation, InvitationStatus, OrgMember,
+    CertificationExam, ExamQuestion
+)
+import pandas as pd
 from audio_bank import AUDIO_BANK
 
 from i18n_content import (
@@ -275,6 +280,8 @@ async def get_org_context(
     # Otherwise, it must be an Org-Id
     org_doc = await db.organizations.find_one({"org_id": x_org_id})
     if not org_doc:
+        if is_platform_admin:
+            return "system" # Fallback for system admins
         raise HTTPException(status_code=404, detail="Organisation non trouvée")
     
     member = next((m for m in org_doc.get("members", []) if m["user_id"] == user.user_id), None)
@@ -1069,3 +1076,171 @@ async def decline_invitation(
         {"$set": {"status": "declined"}}
     )
     return {"message": "Invitation déclinée"}
+
+
+# ── Exam Management (New System) ──────────────────────────────────────
+
+@router.get("/exams/org-context")
+async def get_exam_org_context(owner_id: str = Depends(get_org_context)):
+    return {"owner_id": owner_id}
+
+@router.post("/exams/import")
+async def import_exam_excel(
+    file: UploadFile = File(...),
+    request: Request = None,
+    authorization: Optional[str] = Header(None),
+    owner_id: str = Depends(get_org_context)
+):
+    await get_admin_user(request, authorization)
+    content = await file.read()
+    
+    try:
+        df = pd.read_excel(io.BytesIO(content))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur de lecture du fichier Excel: {str(e)}")
+
+    # Check required columns
+    required_cols = ["QUIZ", "EXAM ID", "TYPE", "QUESTION", "ANSWER"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Colonnes manquantes : {', '.join(missing)}")
+
+    # Process Exams
+    exams_data = {} # exam_id -> {exam_info, questions[]}
+    
+    for _, row in df.iterrows():
+        exam_id = str(row["EXAM ID"]).strip()
+        if not exam_id or exam_id == "nan":
+            continue
+            
+        if exam_id not in exams_data:
+            exams_data[exam_id] = {
+                "exam_info": {
+                    "exam_id": exam_id,
+                    "name": str(row["QUIZ"]).strip(),
+                    "category": str(row.get("CATEGORY", "Général")).strip(),
+                    "subcategory": str(row.get("SUBCATEGORY", "")).strip(),
+                    "level": str(row.get("LEVEL", "moyen")).strip(),
+                    "owner_id": owner_id,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "is_published": False,
+                    "question_count": 0
+                },
+                "questions": []
+            }
+        
+        # Map Question
+        q_type_raw = str(row["TYPE"]).lower().strip()
+        q_type = "single_choice"
+        if "qcm" in q_type_raw:
+            q_type = "single_choice"
+        elif "vf" in q_type_raw or "vrai" in q_type_raw:
+            q_type = "true_false"
+        elif "short" in q_type_raw or "mot" in q_type_raw:
+            q_type = "short_answer"
+        elif "multiple" in q_type_raw:
+            q_type = "multiple_choice"
+
+        # Choices
+        choices_raw = str(row.get("CHOICES", "")).strip()
+        options = None
+        if choices_raw and choices_raw != "nan":
+            options = [c.strip() for c in choices_raw.split("|")]
+
+        # Answer
+        answer_raw = str(row["ANSWER"]).strip()
+        answer = answer_raw
+        if q_type == "true_false":
+            answer = answer_raw.lower() in ("vrai", "true", "1", "yes", "oui")
+        elif q_type in ("single_choice", "multiple_choice") and options:
+            if q_type == "single_choice":
+                try:
+                    # Try to find the index of the answer in options
+                    answer = options.index(answer_raw)
+                except ValueError:
+                    # If not found exactly, keep as string or try index
+                    if answer_raw.isdigit():
+                        answer = int(answer_raw)
+            else: # multiple_choice
+                answers_list = [a.strip() for a in answer_raw.split("|")]
+                answer = []
+                for a in answers_list:
+                    try:
+                        answer.append(options.index(a))
+                    except ValueError:
+                        if a.isdigit():
+                            answer.append(int(a))
+        elif q_type == "short_answer":
+            answer = answer_raw
+
+        q_id = f"eq_{uuid.uuid4().hex[:12]}"
+        question = {
+            "question_id": q_id,
+            "exam_id": exam_id,
+            "type": q_type,
+            "text": str(row["QUESTION"]).strip(),
+            "options": options,
+            "answer": answer,
+            "explanation": str(row.get("EXPLANATION", "")).strip() if str(row.get("EXPLANATION", "")) != "nan" else "",
+            "difficulty": str(row.get("LEVEL", "moyen")).strip(),
+            "owner_id": owner_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        exams_data[exam_id]["questions"].append(question)
+        exams_data[exam_id]["exam_info"]["question_count"] += 1
+
+    # Save to DB
+    saved_exams = 0
+    saved_questions = 0
+    
+    for exam_id, data in exams_data.items():
+        # Update or Insert Exam
+        await db.exams.update_one(
+            {"exam_id": exam_id, "owner_id": owner_id},
+            {"$set": data["exam_info"]},
+            upsert=True
+        )
+        await db.exam_questions.delete_many({"exam_id": exam_id, "owner_id": owner_id})
+        if data["questions"]:
+            await db.exam_questions.insert_many(data["questions"])
+        
+        saved_exams += 1
+        saved_questions += len(data["questions"])
+
+    return {
+        "status": "success",
+        "exams_imported": saved_exams,
+        "questions_imported": saved_questions,
+        "message": f"Import réussi : {saved_exams} examens et {saved_questions} questions."
+    }
+
+
+@router.get("/exams")
+async def list_exams(owner_id: str = Depends(get_org_context)):
+    exams = await db.exams.find({"owner_id": owner_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return exams
+
+
+@router.patch("/exams/{exam_id}/publish")
+async def publish_exam(
+    exam_id: str,
+    body: Dict[str, bool],
+    owner_id: str = Depends(get_org_context)
+):
+    is_published = body.get("is_published", True)
+    result = await db.exams.update_one(
+        {"exam_id": exam_id, "owner_id": owner_id},
+        {"$set": {"is_published": is_published}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Examen non trouvé")
+    return {"exam_id": exam_id, "is_published": is_published}
+
+
+@router.get("/exams/{exam_id}/questions")
+async def list_exam_questions(
+    exam_id: str,
+    owner_id: str = Depends(get_org_context)
+):
+    questions = await db.exam_questions.find({"exam_id": exam_id, "owner_id": owner_id}, {"_id": 0}).to_list(500)
+    return questions

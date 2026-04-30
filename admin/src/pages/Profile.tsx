@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { User as UserIcon, Shield, Mail, Calendar, Key, CheckCircle, Tag, LogOut, ArrowRight, Activity, Building2 } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const ProfilePage = () => {
   const [user, setUser] = useState<any>(null);

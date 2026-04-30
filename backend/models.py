@@ -253,3 +253,58 @@ class Invitation(BaseModel):
     status: InvitationStatus = InvitationStatus.PENDING
     created_at: str
     expires_at: Optional[str] = None
+
+class ExamQuestion(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    question_id: str
+    exam_id: str
+    type: str  # single_choice, multiple_choice, true_false, short_answer
+    text: str
+    options: Optional[List[str]] = None
+    answer: Any
+    explanation: Optional[str] = None
+    difficulty: str = "moyen"
+    category: str = "general"
+    subcategory: Optional[str] = None
+    created_at: Optional[str] = None
+    owner_id: str = "system"
+
+
+class CertificationExam(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    exam_id: str
+    name: str
+    description: Optional[str] = None
+    category: str = "general"
+    subcategory: Optional[str] = None
+    level: str = "moyen"
+    is_published: bool = False
+    owner_id: str = "system"
+    created_at: Optional[str] = None
+    question_count: int = 0
+
+
+class AttemptResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    question_id: str
+    question_text: str
+    user_answer: Any
+    correct_answer: Any
+    is_correct: bool
+    explanation: Optional[str] = None
+
+
+class ExamAttemptCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    exam_id: str
+    score: int
+    duration_seconds: int
+    responses: List[AttemptResponse]
+
+
+class ExamAttempt(ExamAttemptCreate):
+    attempt_id: str
+    user_id: str
+    exam_name: str
+    created_at: str
+

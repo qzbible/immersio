@@ -33,7 +33,7 @@ const AuthCallback = () => {
         );
 
         setUser(response.data);
-        navigate('/dashboard', { replace: true, state: { user: response.data } });
+        navigate('/certifications', { replace: true, state: { user: response.data } });
       } catch (error) {
         console.error('Erreur d\'authentification:', error);
         navigate('/');

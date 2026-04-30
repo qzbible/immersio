@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Manrope:wght@200..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,34 +6,236 @@
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --radius: 0.5rem;
+    /* ── BibleQuest Design System ── */
+    --bq-bg:          #0d0e14;
+    --bq-bg-card:     #12141e;
+    --bq-bg-elevated: #1a1d2e;
+    --bq-border:      rgba(255,255,255,0.07);
+    --bq-border-hover:rgba(255,255,255,0.15);
+
+    /* Accents */
+    --bq-blue:        #2563eb;
+    --bq-blue-light:  #3b82f6;
+    --bq-blue-glow:   rgba(37,99,235,0.25);
+    --bq-orange:      #f97316;
+    --bq-orange-light:#fb923c;
+    --bq-orange-glow: rgba(249,115,22,0.25);
+
+    /* Status */
+    --bq-green:       #00c48c;
+    --bq-red:         #ef4444;
+    --bq-yellow:      #eab308;
+
+    /* Text */
+    --bq-text:        #f1f2f6;
+    --bq-text-muted:  #6b7280;
+    --bq-text-dim:    #9ca3af;
+
+    /* ShadCN compatibility */
+    --background: 230 20% 6%;
+    --foreground: 220 14% 96%;
+    --card: 230 18% 9%;
+    --card-foreground: 220 14% 96%;
+    --popover: 230 18% 9%;
+    --popover-foreground: 220 14% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 230 14% 15%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 230 14% 15%;
+    --muted-foreground: 215 16% 55%;
+    --accent: 230 14% 15%;
+    --accent-foreground: 220 14% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 220 14% 96%;
+    --border: 230 14% 14%;
+    --input: 230 14% 14%;
+    --ring: 217 91% 60%;
+    --radius: 0.75rem;
   }
 }
 
 @layer base {
-  * {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bq-bg);
+    color: var(--bq-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
 }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Utility classes ── */
+@layer utilities {
+  .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+  .bq-card {
+    background: var(--bq-bg-card);
+    border: 1px solid var(--bq-border);
+    border-radius: 16px;
+  }
+
+  .bq-card-elevated {
+    background: var(--bq-bg-elevated);
+    border: 1px solid var(--bq-border);
+    border-radius: 16px;
+  }
+
+  .bq-glow-blue {
+    box-shadow: 0 0 20px var(--bq-blue-glow);
+  }
+  .bq-glow-orange {
+    box-shadow: 0 0 20px var(--bq-orange-glow);
+  }
+
+  .btn-primary {
+    background: var(--bq-orange);
+    color: white;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 10px 24px;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-primary:hover {
+    background: var(--bq-orange-light);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px var(--bq-orange-glow);
+  }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    background: var(--bq-bg-elevated);
+    color: var(--bq-text);
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 10px 24px;
+    border: 1px solid var(--bq-border);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-secondary:hover {
+    border-color: var(--bq-border-hover);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .badge-category {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 6px;
+  }
+
+  /* Timer gradient bar */
+  .timer-bar-fill {
+    background: linear-gradient(90deg, #ef4444 0%, #f97316 30%, #eab308 60%, #00c48c 100%);
+    transition: width 1s linear;
+  }
+
+  /* Question option hover states */
+  .quiz-option {
+    background: var(--bq-bg-elevated);
+    border: 1.5px solid var(--bq-border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    color: var(--bq-text);
+    font-family: 'Inter', sans-serif;
+  }
+  .quiz-option:hover {
+    border-color: var(--bq-blue-light);
+    background: rgba(59,130,246,0.08);
+  }
+  .quiz-option.selected {
+    border-color: var(--bq-orange);
+    background: rgba(249,115,22,0.1);
+  }
+  .quiz-option.correct {
+    border-color: var(--bq-green);
+    background: rgba(0,196,140,0.1);
+  }
+  .quiz-option.wrong {
+    border-color: var(--bq-red);
+    background: rgba(239,68,68,0.1);
+  }
+
+  /* Pagination bubble */
+  .page-bubble {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1.5px solid var(--bq-border);
+    background: var(--bq-bg-elevated);
+    color: var(--bq-text-dim);
+  }
+  .page-bubble.answered {
+    background: var(--bq-green);
+    border-color: var(--bq-green);
+    color: white;
+  }
+  .page-bubble.current {
+    background: var(--bq-orange);
+    border-color: var(--bq-orange);
+    color: white;
+  }
+  .page-bubble.skipped {
+    border-color: var(--bq-orange);
+    color: var(--bq-orange);
+  }
+}
+
+/* ── Animations ── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--bq-orange-glow); }
+  50%       { box-shadow: 0 0 20px 4px var(--bq-orange-glow); }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.35s ease both; }
+.animate-fade-in    { animation: fade-in 0.25s ease both; }
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+

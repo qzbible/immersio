@@ -3,7 +3,7 @@ import axios from 'axios';
 import StatsCard from '../components/StatsCard';
 import { Users, Gamepad2, BookOpen, AlertCircle, Clock, Sparkles } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const Dashboard = () => {
   const [stats, setStats] = useState<any>(null);
